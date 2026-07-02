@@ -71,17 +71,17 @@ kb(){ local img=$1 o=$2 s=$3; local n=$((FPS*s)); local fo; fo=$(awk "BEGIN{prin
     -vf "scale=2560:1440,zoompan=z='min(zoom+0.0009,1.14)':d=${n}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=${FPS},fade=t=in:st=0:d=0.6,fade=t=out:st=${fo}:d=0.6,format=yuv420p" \
     -frames:v ${n} -threads 2 -c:v libx264 -preset veryfast -pix_fmt yuv420p "$o"; }
 
-# ===== 分鏡(版面刻意交替)=====
+# ===== 分鏡(卡片與實際遊玩畫面交替)=====
 card       "$TMP/00.png" intro   "魔法師西蒙" "Simon the Sorcerer" "繁體中文化 · CD 語音 × 完整字幕"
 dcard      "$TMP/01.png" problem "問題" "英文 CD 版,其實沒有完整字幕。" "English CD version — no full subtitles."
-dcard      "$TMP/02.png" problem "現象" "角色嘴巴在動,你卻一個字都看不到。" "Mouths move — but nothing appears."
-dcard      "$TMP/03.png" solve   "解法" "floppy 完整文字 × CD 英語配音,融合。" "Floppy text + CD voice, fused."
-slide_full "$TMP/04.png" sc_hero.png "完整中文字幕,一句不漏"                          # 此圖在編碼段套 Ken Burns 動態
-slide_full "$TMP/05.png" sc_hat.png "24×24 點陣中文,自動換行"                        # 滿版
-split_ba   "$TMP/06.png" "謝謝你,奇皮。" "Thank-you, Chippy."                        # F8 前後對比
-dcard      "$TMP/07.png" gold    "托爾金迷" "以托爾金的神聖鬍鬚之名,準備受死吧!!!" "By the sacred beard of J.R.R.Tolkien, prepare to DIE!!!"
+dcard      "$TMP/02.png" solve   "解法" "floppy 完整文字 × CD 英語配音,融合。" "Floppy text + CD voice, fused."
+slide_full "$TMP/03.png" sc_attic.png "閣樓——冒險的起點,翻出《古老魔法書》"           # 實際遊玩(編碼段套 Ken Burns)
+slide_frame "$TMP/04.png" show sc_room_cht.png "遊戲全程中文旁白"                       # 實際遊玩 + 中文字幕
+split_ba   "$TMP/05.png" "謝謝你,奇皮。" "Thank-you, Chippy."                         # F8 前後對比
+dcard      "$TMP/06.png" gold    "托爾金迷" "以托爾金的神聖鬍鬚之名,準備受死吧!!!" "By the sacred beard of J.R.R.Tolkien, prepare to DIE!!!"
+slide_full "$TMP/07.png" sc_room.png "西蒙的臥室——實際遊玩畫面"                          # 實際遊玩
 dcard      "$TMP/08.png" show    "巨魔橋" "你走運了,我正好是個到處推銷滿足的業務員。" "Luckily, I'm a travelling satisfaction salesman."
-slide_frame "$TMP/09.png" show sc_selftaught.png "當年沒看懂的英式冷笑話,終於補上"    # 框內
+slide_frame "$TMP/09.png" intro sc_hero.png "完整中文字幕,一句不漏"                     # 片頭中文字幕
 card       "$TMP/10.png" gold    "英語原聲 · 完整字幕" "F8 中英切換 · 防拷免手冊" "全程 patch 引擎 · 不改原檔"
 card       "$TMP/11.png" intro   "魔法師西蒙 繁中化" "github.com/wicanr2" "simon-the-sorcerer-cht"
 
@@ -89,7 +89,7 @@ card       "$TMP/11.png" intro   "魔法師西蒙 繁中化" "github.com/wicanr2
 LIST="$TMP/list.txt"; : > "$LIST"
 declare -A SEC=( [00]=6 [01]=5 [02]=5 [03]=5 [04]=6 [05]=6 [06]=6 [07]=6 [08]=6 [09]=6 [10]=6 [11]=6 )
 for f in 00 01 02 03 04 05 06 07 08 09 10 11; do
-  if [ "$f" = "04" ]; then kb "$TMP/$f.png" "$TMP/s_$f.mp4" "${SEC[$f]}"
+  if [ "$f" = "03" ]; then kb "$TMP/$f.png" "$TMP/s_$f.mp4" "${SEC[$f]}"
   else enc "$TMP/$f.png" "$TMP/s_$f.mp4" "${SEC[$f]}"; fi
   echo "file '$TMP/s_$f.mp4'" >> "$LIST"
 done
