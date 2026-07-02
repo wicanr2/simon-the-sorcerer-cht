@@ -54,15 +54,16 @@ build_scummvm(){ local arch=$1 sdlpref=$2 out=$3
   log "build ScummVM $arch"
   cd "$SRC"; make distclean >/dev/null 2>&1 || true
   local runner=""; [ "$arch" = "x86_64" ] && runner="arch -x86_64"
+  # ScummVM configure 非 autoconf:CXXFLAGS/LDFLAGS 只能走環境變數,不能當 KEY=VALUE 引數
+  # (SDL2 是 autoconf 才吃引數)。arch 值須與 $runner 一致:x86_64 在 Rosetta 下 -arch x86_64。
+  CXXFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+  LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
   PATH="$sdlpref/bin:$PATH" $runner ./configure \
       --enable-engine=agos --disable-all-engines --enable-release \
       --with-sdl-prefix="$sdlpref" \
       --disable-mad --disable-vorbis --disable-flac --disable-fluidsynth \
       --disable-mpeg2 --disable-theoradec --disable-faad --disable-libcurl \
-      --disable-png --disable-freetype2 --disable-jpeg --disable-timidity \
-      --enable-optimizations \
-      CXXFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
-      LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" >/dev/null
+      --disable-png --disable-freetype2 --disable-jpeg --disable-timidity >/dev/null
   $runner make -j"$(sysctl -n hw.ncpu)" >/dev/null
   cp scummvm "$out"
   cd "$ROOT"
