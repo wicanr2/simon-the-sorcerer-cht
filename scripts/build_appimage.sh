@@ -1,6 +1,6 @@
 #!/bin/bash
 # 完整版 AppImage:patched ScummVM + 內含遊戲(floppy 資料 + CD SIMON.VOC + CHT 資產)
-# 雙擊直接進《魔法師西蒙》繁中融合版。
+# 雙擊直接進《神通妙巫師》繁中融合版。
 # 產出: dist/SimonTheSorcerer-CHT-FULL-x86_64.AppImage(私用完整版,含版權資料,不入 git)
 set -e
 PROJ="/home/anr2/scummvm/simon-1-cht-claude"

@@ -89,7 +89,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>Simon CHT</string>
-  <key>CFBundleDisplayName</key><string>魔法師西蒙 繁中</string>
+  <key>CFBundleDisplayName</key><string>神通妙巫師 繁中</string>
   <key>CFBundleIdentifier</key><string>com.wicanr2.simon-cht</string>
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundleExecutable</key><string>launch.sh</string>

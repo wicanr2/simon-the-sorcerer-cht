@@ -1,6 +1,6 @@
 # 前一版中文化失敗分析(Postmortem)
 
-分析對象:前一版《魔法師西蒙》中文化(deepseek + glm5.2 產出,`~/scummvm/simon-1`,
+分析對象:前一版《神通妙巫師》中文化(deepseek + glm5.2 產出,`~/scummvm/simon-1`,
 repo `simon-the-sorcerer-cht-scummvm-opencode`)。
 
 先說公道話:**前一版的翻譯文筆本身不差**,抽樣讀來通順自然。它的失敗**不在中文品質,而在方法學**——

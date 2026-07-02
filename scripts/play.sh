@@ -1,5 +1,5 @@
 #!/bin/bash
-# 啟動繁中融合版魔法師西蒙 (需 X 顯示 + SDL2)。
+# 啟動繁中融合版神通妙巫師 (需 X 顯示 + SDL2)。
 # 遊戲目錄 run_floppy/ 已含: floppy 遊戲檔 + CD SIMON.VOC(語音) + CHT 資產。
 # 遊戲中按 F8 切換中/英文字幕(語音維持英語)。
 set -e
