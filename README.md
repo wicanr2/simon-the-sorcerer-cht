@@ -6,8 +6,8 @@
 > 三十年前它沒有中文版;現在,它有了——而且連英語配音都一起留著。
 
 <p align="center">
-  <a href="https://youtu.be/BrlJHKvgJ9M">
-    <img src="https://img.youtube.com/vi/BrlJHKvgJ9M/hqdefault.jpg" alt="觀看介紹影片" width="480"><br>
+  <a href="https://youtu.be/TTQcoItbF38">
+    <img src="https://img.youtube.com/vi/TTQcoItbF38/hqdefault.jpg" alt="觀看介紹影片" width="480"><br>
     ▶ 觀看介紹影片(約 80 秒)
   </a>
 </p>
@@ -120,7 +120,7 @@
 
 ## 影片旁白
 
-▶ **影片已上線:[youtu.be/BrlJHKvgJ9M](https://youtu.be/BrlJHKvgJ9M)**
+▶ **影片已上線:[youtu.be/TTQcoItbF38](https://youtu.be/TTQcoItbF38)**
 
 下面是這支短片的旁白(約 80 秒):
 
