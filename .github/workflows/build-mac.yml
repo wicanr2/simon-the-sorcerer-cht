@@ -12,17 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install packaging tools
-        run: brew install dylibbundler
-
       - name: Build universal .app (self-built SDL2, no sdl2-compat)
         run: bash scripts/ci_mac_build.sh
 
-      - name: Verify SDL2 is real (not SDL3 shim) & universal
+      - name: Verify universal (arm64+x86_64) & SDL2 real (not SDL3 shim)
         run: |
           APP=dist-mac/SimonScummVM-CHT.app
-          echo "== binary archs =="; lipo -info "$APP/Contents/MacOS/scummvm"
-          echo "== SDL2 archs ==";   lipo -info "$APP/Contents/Frameworks/libSDL2-2.0.0.dylib"
+          for f in "$APP/Contents/MacOS/scummvm" "$APP/Contents/Frameworks/libSDL2-2.0.0.dylib"; do
+            info=$(lipo -info "$f"); echo "$info"
+            echo "$info" | grep -q arm64 && echo "$info" | grep -q x86_64 \
+              || { echo "FATAL: $f 非 universal"; exit 1; }
+          done
           echo "== linkage =="; otool -L "$APP/Contents/MacOS/scummvm" | grep -i sdl
           if otool -L "$APP/Contents/Frameworks/libSDL2-2.0.0.dylib" | grep -qi SDL3; then
             echo "FATAL: sdl2-compat shim detected"; exit 1; fi

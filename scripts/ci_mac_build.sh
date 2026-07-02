@@ -112,19 +112,32 @@ fi
 LAUNCH
 chmod +x "$APP/Contents/MacOS/launch.sh"
 
-# ---- 5. dylibbundler(-s 給自編 SDL prefix, </dev/null 保險) ----
-log "dylibbundler"
-if ! command -v dylibbundler >/dev/null; then brew install dylibbundler >/dev/null; fi
-dylibbundler -od -b \
-  -x "$APP/Contents/MacOS/scummvm" \
-  -d "$APP/Contents/Frameworks/" \
-  -p "@executable_path/../Frameworks/" \
-  -s "$WORK/sdl-univ/lib" -s "$WORK/sdl-arm64/lib" </dev/null
-# 防呆:Frameworks 內 SDL2 應為 ~2MB 真 SDL2,非 shim
-ls -la "$APP/Contents/Frameworks/" || true
-if otool -L "$APP/Contents/Frameworks/libSDL2-2.0.0.dylib" 2>/dev/null | grep -qi SDL3; then
-  echo "FATAL: SDL2 是 sdl2-compat shim"; exit 1
-fi
+# ---- 5. 手動 bundle SDL2(唯一非系統 dylib;png/freetype/vorbis 等皆已停用)----
+# 不用 dylibbundler:lipo 後的 universal scummvm 兩個 slice 各自參照不同 prefix 的
+# SDL2 路徑(autoconf 的 install_name = 各自 --prefix),dylibbundler 只會抓其中一份
+# 非-fat dylib,導致 Frameworks 內 SDL2 變單弧(x86_64)。改手動放 universal SDL2 進
+# Frameworks,對兩個舊路徑各 install_name_tool -change 一次(每次只影響對應 slice)。
+log "manual bundle SDL2 (universal)"
+SDL_ARM="$WORK/sdl-arm64/lib/libSDL2-2.0.0.dylib"
+SDL_X86="$WORK/sdl-x86_64/lib/libSDL2-2.0.0.dylib"
+FW="$APP/Contents/Frameworks/libSDL2-2.0.0.dylib"
+cp "$WORK/sdl-univ/lib/libSDL2-2.0.0.dylib" "$FW"; chmod 644 "$FW"
+install_name_tool -id "@executable_path/../Frameworks/libSDL2-2.0.0.dylib" "$FW"
+install_name_tool -change "$SDL_ARM" "@executable_path/../Frameworks/libSDL2-2.0.0.dylib" "$APP/Contents/MacOS/scummvm"
+install_name_tool -change "$SDL_X86" "@executable_path/../Frameworks/libSDL2-2.0.0.dylib" "$APP/Contents/MacOS/scummvm"
+# install_name_tool 改過必須重簽(否則載入/Gatekeeper 失敗);ad-hoc 對兩弧都有效
+codesign --force --sign - "$FW"
+codesign --force --sign - "$APP/Contents/MacOS/scummvm"
+
+# ---- 5b. 防呆:binary 與 SDL2 都必須 universal(arm64+x86_64)、非 SDL3 shim、無殘留絕對路徑 ----
+for f in "$APP/Contents/MacOS/scummvm" "$FW"; do
+  info=$(lipo -info "$f"); echo "$info"
+  echo "$info" | grep -q "arm64" && echo "$info" | grep -q "x86_64" || { echo "FATAL: $f 非 universal"; exit 1; }
+done
+if otool -L "$APP/Contents/MacOS/scummvm" | grep -qi "SDL3"; then echo "FATAL: SDL3 shim"; exit 1; fi
+if otool -L "$APP/Contents/MacOS/scummvm" | grep -q "_macbuild"; then
+  echo "FATAL: scummvm 殘留 build 期絕對路徑"; otool -L "$APP/Contents/MacOS/scummvm"; exit 1; fi
+ls -la "$APP/Contents/Frameworks/"; otool -L "$APP/Contents/MacOS/scummvm" | grep -i sdl
 
 # ---- 6. 打包 .dmg + .tar.gz(雙保險)----
 log "package"
