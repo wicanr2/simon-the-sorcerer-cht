@@ -146,6 +146,8 @@ engine patch 新增 `engines/agos/cht_fusion.{h,cpp}`,並改動 `agos.cpp`、`st
 | [docs/FUSION_DESIGN.md](docs/FUSION_DESIGN.md) | 融合架構:CD 語音 + floppy 字幕 + 中英切換 + 對齊實測 |
 | [docs/LOCALIZATION_DIFFICULTY.md](docs/LOCALIZATION_DIFFICULTY.md) | 中文化難度討論:為何 AGOS 比一般 ScummVM 難 |
 | [docs/COMPARISON.md](docs/COMPARISON.md) | 與前一版(deepseek+glm 產出)的逐項差異 |
+| [docs/PREVIOUS_REPO_POSTMORTEM.md](docs/PREVIOUS_REPO_POSTMORTEM.md) | **前一版失敗分析**:六個症狀、一個根因、教訓對照 |
+| [docs/PROMO_VIDEO_PLAN.md](docs/PROMO_VIDEO_PLAN.md) | **宣傳影片拍攝計畫**:三段 pipeline、分鏡、配樂(原版)、CPU-safe 骨架 |
 | [WORKLIST.md](WORKLIST.md) | 工作清單與進度 |
 
 ---
