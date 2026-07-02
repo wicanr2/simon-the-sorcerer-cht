@@ -29,7 +29,10 @@
 ## 第四階段:打包與驗證
 - [x] 實機驗證:字幕 CJK ✓、語音+字幕共存不崩 ✓
 - [x] 完整譯表已編入 `fonts/simon_zh.tab` + `run_floppy/`(可執行)
-- [ ] Linux AppImage 打包(floppy 資料 + CD 語音 + CHT 資產)— 後續
+- [x] Linux AppImage 完整版(遊戲 + CD 語音 + CHT 資產,auto-detect 自動進遊戲)→ `dist/*.AppImage`(98MB)
+- [x] Windows 完整版(docker mingw 交叉編譯,Wine 實測 exe 可跑)→ `dist/win/` + zip(108MB,本機)
+- [x] macOS universal .app CI(自編真 SDL2 + lipo,patch 已 Linux de-risk)→ `.github/workflows/build-mac.yml`(run 28582713401 進行中)
+- [x] 三平台建置流程 → `docs/DEV-SETUP.md`
 - [ ] 存讀檔 saveload.cpp ZH_TWN 分支 — 後續
 - [x] 與前一版差異比較 → `docs/COMPARISON.md`
 

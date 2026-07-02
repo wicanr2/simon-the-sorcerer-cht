@@ -6,6 +6,17 @@
 # 產出:dist-mac/SimonScummVM-CHT.app + .dmg + .tar.gz(無遊戲,私用版本機注入)
 set -euo pipefail
 SDL_VER=2.30.9; MIN=11.0
+
+# 斷言:必須在 Apple Silicon(arm64)runner 上,否則 arch -x86_64(Rosetta)邏輯會反。
+# GitHub macos-14 = arm64;若被排到 Intel(macos-13)runner,x86_64 變原生、arm64 無法
+# 用 Rosetta 跑 configure 測試,會產出單弧或壞掉的 binary。寧可 fail-fast。
+HOSTARCH="$(uname -m)"
+if [ "$HOSTARCH" != "arm64" ]; then
+  echo "FATAL: 需要 Apple Silicon(arm64)runner,實際 uname -m=$HOSTARCH。" >&2
+  echo "       請確認 workflow runs-on: macos-14(非 macos-13/Intel)。" >&2
+  exit 1
+fi
+
 ROOT="$PWD"; WORK="$ROOT/_macbuild"; mkdir -p "$WORK"
 SRC="$WORK/scummvm-src"; DIST="$ROOT/dist-mac"; mkdir -p "$DIST"
 
