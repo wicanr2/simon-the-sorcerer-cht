@@ -1,0 +1,461 @@
+diff --git a/engines/agos/agos.cpp b/engines/agos/agos.cpp
+index af27f131..64f8cb3b 100644
+--- a/engines/agos/agos.cpp
++++ b/engines/agos/agos.cpp
+@@ -1061,6 +1061,36 @@ Common::Error AGOSEngine::go() {
+ 		loadMenuFile();
+ 	}
+ 
++	// Non-upstream: dump all subroutines for CHT fusion alignment, then quit.
++	if (Common::File::exists("dump_scripts_flag")) {
++		debugN("=== SIMON_SCRIPT_DUMP_BEGIN ===\n");
++		dumpAllSubroutines();
++		debugN("=== SIMON_SCRIPT_DUMP_END ===\n");
++		return Common::kNoError;
++	}
++
++	// Non-upstream: 繁中融合載入 (CD 語音 + floppy 完整字幕)
++	_chtActive = false;
++	_chtSubLang = 1;   // 預設中文字幕
++	_chtBufSlot = 0;
++	if (getGameType() == GType_SIMON1) {
++		bool fontOk = chtLoadFont(_cht, "simon_zh24.dcjk");
++		bool tabOk = chtLoadTable(_cht, "simon_zh.tab");
++		chtLoadVoiceMap(_cht, "simon_voice.map");
++		if (fontOk && tabOk) {
++			_chtActive = true;
++			_subtitles = true;
++			_copyProtection = false;   // 融合版強制 bypass 防拷(自動填答, 免查手冊)
++			debug(0, "CHT: fusion mode ON (font+table ready), voiceMap=%u", (uint)_cht.voice.size());
++			// 融合語音: floppy 版無 talkie, 若有 CD 的 SIMON.VOC 就載入並開語音
++			if ((Common::File::exists("SIMON.VOC") || Common::File::exists("simon.voc")) && !_cht.voice.empty()) {
++				_sound->chtLoadVoice(gss);
++				_speech = true;
++				debug(0, "CHT: voice ON (SIMON.VOC loaded)");
++			}
++		}
++	}
++
+ 	vc34_setMouseOff();
+ 
+ 	if (getGameType() != GType_PP && getGameType() != GType_FF) {
+diff --git a/engines/agos/agos.h b/engines/agos/agos.h
+index 6a8d2237..21d94a19 100644
+--- a/engines/agos/agos.h
++++ b/engines/agos/agos.h
+@@ -38,6 +38,7 @@
+ 
+ #include "agos/vga.h"
+ #include "agos/detection.h"
++#include "agos/cht_fusion.h"
+ 
+ /**
+  * This is the namespace of the AGOS engine.
+@@ -386,6 +387,14 @@ protected:
+ 	bool _pause;
+ 	bool _speech;
+ 	bool _subtitles;
++
++	// 繁中融合 (非上游)
++	ChtFusion _cht;
++	int _chtSubLang;   // 0=英文字幕(原生), 1=中文字幕
++	bool _chtActive;   // 融合模式啟用(字型+譯表就緒)
++	byte _chtBuf[2][1024];
++	int _chtBufSlot;
++	byte _chtLead;     // windowDrawChar Big5 雙位元組狀態
+ 	bool _vgaVar9;
+ 	int16 _chanceModifier;
+ 	bool _restoreWindow6;
+@@ -957,6 +966,10 @@ protected:
+ 
+ 	void renderStringAmiga(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
+ 	void renderString(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
++	// 繁中融合 (非上游)
++	void chtRenderStringCJK(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
++	bool chtPrintScreenText(uint vgaSpriteId, uint color, const char *string, int16 x, int16 y, int16 width);
++	void chtDrawBig5OnSurface(WindowBlock *window, uint x, uint y, byte lead, byte trail);
+ 
+ 	void writeChar(WindowBlock *window, int x, int y, int offs, int val);
+ 
+diff --git a/engines/agos/charset-fontdata.cpp b/engines/agos/charset-fontdata.cpp
+index 193986e3..819356db 100644
+--- a/engines/agos/charset-fontdata.cpp
++++ b/engines/agos/charset-fontdata.cpp
+@@ -1298,6 +1298,84 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
+ 	}
+ }
+ 
++// 繁中融合 (非上游): 把已折行的 Big5 字串繪進字幕 sprite buffer
++void AGOSEngine::chtRenderStringCJK(uint vgaSpriteId, uint color, uint width, uint height, const char *txt) {
++	VgaPointersEntry *vpe = &_vgaBufferPointers[2];
++	if (vgaSpriteId >= 100) {
++		vgaSpriteId -= 100;
++		vpe++;
++	}
++	byte *base = vpe->vgaFile2;
++	byte *p = base + vgaSpriteId * 8;
++	WRITE_BE_UINT16(p + 4, height);
++	WRITE_BE_UINT16(p + 6, width);
++	byte *dst = base + readUint32Wrapper(p);
++
++	uint total = width * height;
++	if (total > 39000)
++		total = 39000;
++	memset(dst, 0, total);
++
++	const int fw = _cht.fontW, fh = _cht.fontH, bpr = _cht.fontBpr;
++	int lineY = 0, curX = 0;
++	const byte *s = (const byte *)txt;
++	byte px = (byte)(color + 12);
++	while (*s) {
++		byte c = *s++;
++		if (c == '\n') { lineY += fh; curX = 0; continue; }
++		if (c == ' ') { curX += fw / 2; continue; }
++		if (chtIsBig5Lead(c) && *s) {
++			byte trail = *s++;
++			const byte *g = _cht.glyph(c, trail);
++			if (g && curX + fw <= (int)width) {
++				for (int row = 0; row < fh; row++) {
++					int yy = lineY + row;
++					if ((uint)(yy * (int)width + curX + fw) > total)
++						break;
++					byte *d = dst + yy * (int)width + curX;
++					const byte *gr = g + row * bpr;
++					for (int col = 0; col < fw; col++) {
++						if (gr[col >> 3] & (0x80 >> (col & 7)))
++							d[col] = px;
++					}
++				}
++			}
++			curX += fw;
++		} else {
++			curX += fw / 2;
++		}
++	}
++}
++
++// 繁中融合 (非上游): 把一個 Big5 字直接繪到 backend surface (視窗文字用)
++void AGOSEngine::chtDrawBig5OnSurface(WindowBlock *window, uint x, uint y, byte lead, byte trail) {
++	const byte *g = _cht.glyph(lead, trail);
++	if (!g)
++		return;
++	Graphics::Surface *screen = getBackendSurface();
++	byte *sp = (byte *)screen->getPixels();
++	uint pitch = screen->pitch;
++	int fw = _cht.fontW, fh = _cht.fontH, bpr = _cht.fontBpr;
++	byte tc = (byte)(window->textColor ? window->textColor : 15);
++	// 8px 列高容不下 24px, 往上抬讓字置中於文字行
++	int oy = (int)y - (fh - 8);
++	if (oy < 0)
++		oy = 0;
++	for (int row = 0; row < fh; row++) {
++		int yy = oy + row;
++		if (yy < 0 || yy >= screen->h)
++			continue;
++		const byte *gr = g + row * bpr;
++		byte *d = sp + yy * pitch + x;
++		for (int col = 0; col < fw; col++) {
++			if ((int)x + col >= screen->w)
++				break;
++			if (gr[col >> 3] & (0x80 >> (col & 7)))
++				d[col] = tc;
++		}
++	}
++}
++
+ static const byte czech_simonFont[] = {
+ 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+ 	0x20, 0x70, 0x70, 0x20, 0x20, 0x00, 0x20, 0x00,
+diff --git a/engines/agos/charset.cpp b/engines/agos/charset.cpp
+index 05451427..db49128f 100644
+--- a/engines/agos/charset.cpp
++++ b/engines/agos/charset.cpp
+@@ -221,6 +221,26 @@ void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
+ 	byte width = 6;
+ 	byte textColumnWidth = 8;
+ 
++	// 繁中融合 (非上游): Big5 雙位元組視窗文字 (物件名/動詞列)
++	if (_chtActive && _chtSubLang == 1 && getGameType() == GType_SIMON1) {
++		if (_chtLead != 0) {
++			byte lead = _chtLead;
++			_chtLead = 0;
++			if (window->textLength == window->textMaxLength || window->textRow == window->height)
++				windowNewLine(window);
++			uint px = window->x * 8 + window->textColumn * 8;
++			uint py = window->textRow * 8 + window->y;
++			chtDrawBig5OnSurface(window, px, py, lead, c);
++			window->textColumn += 3;   // 24px = 3 欄
++			window->textLength += 2;
++			return;
++		}
++		if (chtIsBig5Lead(c)) {
++			_chtLead = c;
++			return;
++		}
++	}
++
+ 	if (c == 12) {
+ 		clearWindow(window);
+ 	} else if (c == 13 || c == 10) {
+diff --git a/engines/agos/event.cpp b/engines/agos/event.cpp
+index db3ba144..7edc9a0d 100644
+--- a/engines/agos/event.cpp
++++ b/engines/agos/event.cpp
+@@ -512,6 +512,9 @@ void AGOSEngine::delay(uint amount) {
+ 						_variableArray[41] = 1;
+ 				}
+ 
++				// 繁中融合(非上游): F8 切換中/英文字幕(語音維持英語)
++				if (_chtActive && event.kbd.keycode == Common::KEYCODE_F8)
++					_chtSubLang ^= 1;
+ 				_keyPressed = event.kbd;
+ 				break;
+ 			case Common::EVENT_MOUSEMOVE:
+diff --git a/engines/agos/module.mk b/engines/agos/module.mk
+index 37432e1e..be4c4ce4 100644
+--- a/engines/agos/module.mk
++++ b/engines/agos/module.mk
+@@ -9,6 +9,7 @@ MODULE_OBJS := \
+ 	drivers/accolade/mt32.o \
+ 	drivers/simon1/adlib.o \
+ 	agos.o \
++	cht_fusion.o \
+ 	charset.o \
+ 	charset-fontdata.o \
+ 	contain.o \
+diff --git a/engines/agos/res.cpp b/engines/agos/res.cpp
+index cb1597bc..e83e4294 100644
+--- a/engines/agos/res.cpp
++++ b/engines/agos/res.cpp
+@@ -915,7 +915,8 @@ void AGOSEngine::loadVGAVideoFile(uint16 id, uint8 type, bool useError) {
+ 		// Allocate more space for text to cope with foreign languages that use
+ 		// up more space than English. I hope 6400 bytes are enough. This number
+ 		// is base on: 2 (lines) * 320 (screen width) * 10 (textheight) -- olki
+-		extraBuffer += 6400;
++		// Non-upstream: 繁中 24px 字幕需更大文字區 (最多 ~5 行 * 320 * 24)
++		extraBuffer += 40000;
+ 	}
+ 
+ 	if (getFeatures() & GF_ZLIBCOMP) {
+diff --git a/engines/agos/saveload.cpp b/engines/agos/saveload.cpp
+index b2095d1e..03855978 100644
+--- a/engines/agos/saveload.cpp
++++ b/engines/agos/saveload.cpp
+@@ -252,6 +252,12 @@ bool AGOSEngine::confirmOverWrite(WindowBlock *window) {
+ 		break;
+ 	}
+ 
++	if (_chtActive && _chtSubLang == 1) {
++		message1 = "\r \xc0\xc9\xae\xd7\xa4\x77\xa6\x73\xa6\x62\xa1\x43\r\r";
++		message2 = "   \xad\x6e\xc2\xd0\xbc\x67\xb6\xdc?\r\r";
++		message3 = "     \xac\x4f         \xa7\x5f";
++	}
++
+ 	printScroll();
+ 	window->textColumn = 0;
+ 	window->textRow = 0;
+@@ -1018,6 +1024,16 @@ void AGOSEngine::fileError(WindowBlock *window, bool saveError) {
+ 		}
+ 	}
+ 
++	if (_chtActive && _chtSubLang == 1) {
++		if (saveError) {
++			message1 = "\r     \xa6\x73\xc0\xc9\xa5\xa2\xb1\xd1\xa1\x43";
++			message2 = "\r     \xba\xcf\xba\xd0\xbf\xf9\xbb\x7e\xa1\x43";
++		} else {
++			message1 = "\r     \xc5\xaa\xa8\xfa\xa5\xa2\xb1\xd1\xa1\x43";
++			message2 = "\r    \xa7\xe4\xa4\xa3\xa8\xec\xc0\xc9\xae\xd7\xa1\x43";
++		}
++	}
++
+ 	if (getGameType() == GType_ELVIRA1) {
+ 		printScroll();
+ 		window->textColumn = 0;
+diff --git a/engines/agos/script_s1.cpp b/engines/agos/script_s1.cpp
+index b8b871a9..edf2383a 100644
+--- a/engines/agos/script_s1.cpp
++++ b/engines/agos/script_s1.cpp
+@@ -358,6 +358,13 @@ void AGOSEngine_Simon1::os1_screenTextMsg() {
+ 		vgaSpriteId = 1;
+ 
+ 	tl = getTextLocation(vgaSpriteId);
++	// 繁中融合 (非上游): floppy 腳本無 speechId, 依對映直接播 CD 語音音訊
++	// (只播音, 不走 playSpeech 的 talkie 講話頭動畫 — floppy 無該 VGA 資料)
++	if (_chtActive && _speech && speechId == 0 && stringId != 0xFFFF && !_cht.voice.empty()) {
++		Common::HashMap<uint32, uint16>::const_iterator vit = _cht.voice.find(stringId);
++		if (vit != _cht.voice.end() && vit->_value != 0 && vit->_value != 9999)
++			loadVoice(vit->_value);
++	}
+ 	if (_speech && speechId != 0)
+ 		playSpeech(speechId, vgaSpriteId);
+ 	if (((getGameType() == GType_SIMON2 && (getFeatures() & GF_TALKIE)) || getGameType() == GType_FF) &&
+diff --git a/engines/agos/sound.h b/engines/agos/sound.h
+index d9a2deac..3108d058 100644
+--- a/engines/agos/sound.h
++++ b/engines/agos/sound.h
+@@ -79,6 +79,8 @@ protected:
+ 	void loadSfxFile(const GameSpecificSettings *gss);
+ 
+ public:
++	// 繁中融合 (非上游): 讓 floppy 模式可手動載入 CD 語音檔
++	void chtLoadVoice(const GameSpecificSettings *gss) { loadVoiceFile(gss); }
+ 	void readSfxFile(const Common::Path &filename);
+ 	void loadSfxTable(const char *gameFilename, uint32 base);
+ 	void readVoiceFile(const Common::Path &filename);
+diff --git a/engines/agos/string.cpp b/engines/agos/string.cpp
+index 1aa590b8..4c8b9b0d 100644
+--- a/engines/agos/string.cpp
++++ b/engines/agos/string.cpp
+@@ -135,6 +135,20 @@ const byte *AGOSEngine::getStringPtrByID(uint16 stringId, bool upperCase) {
+ 		Common::strlcpy((char *)dst, (const char *)stringPtr, 180);
+ 	}
+ 
++	// Non-upstream: 繁中字幕注入 — 依 floppy stringId 換成 Big5 完整文字
++	if (_chtActive && _chtSubLang == 1) {
++		Common::HashMap<uint32, Common::String>::const_iterator it = _cht.table.find(stringId);
++		if (it != _cht.table.end()) {
++			_chtBufSlot ^= 1;
++			byte *zb = _chtBuf[_chtBufSlot];
++			uint n = it->_value.size();
++			if (n > 1022) n = 1022;
++			memcpy(zb, it->_value.c_str(), n);
++			zb[n] = 0;
++			return zb;
++		}
++	}
++
+ 	// WORKAROUND bug #2780: The French version of Simon 1 and the
+ 	// Polish version of Simon 2 used excess spaces, at the end of many
+ 	// messages, so we strip off those excess spaces.
+@@ -480,7 +494,72 @@ bool AGOSEngine::printNameOf(Item *item, uint x, uint y) {
+ 	return true;
+ }
+ 
++// 繁中融合 (非上游): CJK 字幕折行 + 繪製; 命中回 true
++bool AGOSEngine::chtPrintScreenText(uint vgaSpriteId, uint color, const char *string, int16 x, int16 y, int16 width) {
++	if (!_chtActive || _chtSubLang != 1)
++		return false;
++	// 需含 Big5 (否則走原生 ASCII)
++	bool hasBig5 = false;
++	for (const byte *q = (const byte *)string; *q; q++)
++		if (chtIsBig5Lead(*q)) { hasBig5 = true; break; }
++	if (!hasBig5)
++		return false;
++
++	const int fw = _cht.fontW, fh = _cht.fontH;
++	int usableW = width;
++	if (usableW < fw * 4)
++		usableW = 288;
++	if (usableW > 312)
++		usableW = 312;
++	int maxCells = usableW / fw;
++	if (maxCells < 1)
++		maxCells = 1;
++
++	Common::String out;
++	int cells = 0, lines = 1;
++	const byte *s = (const byte *)string;
++	while (*s) {
++		byte c = *s;
++		if (chtIsBig5Lead(c) && s[1]) {
++			if (cells >= maxCells) { out += '\n'; cells = 0; lines++; }
++			out += (char)s[0]; out += (char)s[1]; s += 2; cells++;
++		} else {
++			if (cells * 2 >= maxCells * 2) { /* half cell */ }
++			if (cells >= maxCells) { out += '\n'; cells = 0; lines++; }
++			out += (char)c; s++;
++			// 半形前進半格
++		}
++	}
++	if (lines > 5) lines = 5;
++
++	int stringLength = strlen(string);
++	int talkDelay = (stringLength + 3) / 3;
++	if (_variableArray[86] == 0) talkDelay /= 2;
++	if (_variableArray[86] == 2) talkDelay *= 2;
++	_variableArray[85] = talkDelay * 5;
++
++	if (getGameType() == GType_SIMON1)
++		stopAnimate(vgaSpriteId + 199);
++
++	uint rcolor = color * 3 + 192;
++	chtRenderStringCJK(vgaSpriteId, rcolor, usableW, lines * fh, out.c_str());
++
++	uint16 windowNum = (!getBitFlag(133)) ? 3 : 4;
++	if (getGameType() == GType_SIMON1 && (getFeatures() & GF_DEMO))
++		windowNum = 4;
++	int16 rx = x / 8;
++	int16 ry = y;
++	if (ry < 2) ry = 2;
++	if (getGameType() == GType_SIMON1) {
++		uint16 id = 199 + vgaSpriteId;
++		animate(windowNum, id / 100, id, rx, ry, 12);
++	}
++	return true;
++}
++
+ void AGOSEngine::printScreenText(uint vgaSpriteId, uint color, const char *string, int16 x, int16 y, int16 width) {
++	if (chtPrintScreenText(vgaSpriteId, color, string, x, y, width))
++		return;
+ 	char convertedString[320];
+ 	char *convertedString2 = convertedString;
+ 	int16 height, talkDelay;
+diff --git a/engines/agos/verb.cpp b/engines/agos/verb.cpp
+index f2212260..cb2c668d 100644
+--- a/engines/agos/verb.cpp
++++ b/engines/agos/verb.cpp
+@@ -120,6 +120,36 @@ static const char *const german_verb_names[] = {
+ 	"Gib"
+ };
+ 
++static const char *const cht_verb_names[] = {
++	"\xa8\xab\xa8\xec",
++	"\xac\x64\xac\xdd",
++	"\xa5\xb4\xb6\x7d",
++	"\xb2\xbe\xb0\xca",
++	"\xa6\x59\xa4\x55",
++	"\xae\xb3\xb0\x5f",
++	"\xc3\xf6\xa4\x57",
++	"\xa8\xcf\xa5\xce",
++	"\xa5\xe6\xbd\xcd",
++	"\xb2\xbe\xb0\xa3",
++	"\xac\xef\xa4\x57",
++	"\xb5\xb9\xa4\xa9"
++};
++
++static const char *const cht_verb_prep_names[] = {
++	"",
++	"",
++	"",
++	"",
++	"",
++	"",
++	"",
++	"\xa5\xce\xa4\xb0\xbb\xf2\x3f",
++	"",
++	"",
++	"",
++	"\xb5\xb9\xbd\xd6\x3f"
++};
++
+ static const char *const english_verb_names[] = {
+ 	"Walk to",
+ 	"Look at",
+@@ -288,6 +318,8 @@ void AGOSEngine::printVerbOf(uint hitarea_id) {
+ 			verb_prep_names = english_verb_prep_names;
+ 			break;
+ 		}
++		if (_chtActive && _chtSubLang == 1)
++			verb_prep_names = cht_verb_prep_names;
+ 		CHECK_BOUNDS(hitarea_id, english_verb_prep_names);
+ 		txt = verb_prep_names[hitarea_id];
+ 	} else {
+@@ -317,6 +349,8 @@ void AGOSEngine::printVerbOf(uint hitarea_id) {
+ 			verb_names = english_verb_names;
+ 			break;
+ 		}
++		if (_chtActive && _chtSubLang == 1)
++			verb_names = cht_verb_names;
+ 		CHECK_BOUNDS(hitarea_id, english_verb_names);
+ 		txt = verb_names[hitarea_id];
+ 	}

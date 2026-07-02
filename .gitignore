@@ -1,0 +1,42 @@
+# 遊戲原始檔 / 版權資產 — 絕不進 git
+original_game/
+original_game_floppy/
+run_floppy/
+floppy_install/
+*.GME
+*.gme
+*.VOC
+*.voc
+*.ISO
+*.iso
+*.img
+GAMEPC
+gamepc
+*.VGA
+*.vga
+
+# 遊戲文字萃取(含遊戲英文對白,版權)— 用 tools 重新產生
+strings/floppy_text.tsv
+strings/speech_to_floppy.tsv
+strings/dumps/
+strings/*.txt
+
+# build 樹(巨大)與產物 — 用 scripts 重建
+build/
+dist/
+scummvm_api
+
+# 原始截圖(保留 PROOF_* 與 docs/img 供 README)
+screenshots/shot_*.png
+screenshots/montage*.png
+screenshots/*.log
+screenshots/gp_*.png
+screenshots/vb_*.png
+
+# 暫存
+*.tmp
+__pycache__/
+
+# 原始測試截圖目錄(雜物)
+screenshots_gp/
+screenshots_vb/
