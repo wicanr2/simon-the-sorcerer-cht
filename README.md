@@ -148,6 +148,7 @@ engine patch 新增 `engines/agos/cht_fusion.{h,cpp}`,並改動 `agos.cpp`、`st
 | [docs/COMPARISON.md](docs/COMPARISON.md) | 與前一版(deepseek+glm 產出)的逐項差異 |
 | [docs/PREVIOUS_REPO_POSTMORTEM.md](docs/PREVIOUS_REPO_POSTMORTEM.md) | **前一版失敗分析**:六個症狀、一個根因、教訓對照 |
 | [docs/PROMO_VIDEO_PLAN.md](docs/PROMO_VIDEO_PLAN.md) | **宣傳影片拍攝計畫**:三段 pipeline、分鏡、配樂(原版)、CPU-safe 骨架 |
+| [docs/ANNOUNCEMENT.md](docs/ANNOUNCEMENT.md) | **介紹文案 / 貢獻說明**(含托爾金笑話,可直接發布) |
 | [WORKLIST.md](WORKLIST.md) | 工作清單與進度 |
 
 ---
