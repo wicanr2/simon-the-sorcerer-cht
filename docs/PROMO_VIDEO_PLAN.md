@@ -1,114 +1,142 @@
-# 宣傳影片拍攝計畫(神通妙巫師 繁中融合版)
+# 宣傳影片拍攝計畫(神通妙巫師 繁中融合版)— v5 重拍(640 crisp)
 
-依 `game-promo-video-ffmpeg` skill(u1-cht 起源的三段 pipeline)與 `rulebook/93`(配樂用原版鐵則)擬定。
-本文件是**計畫**,尚未產片;要開拍時照本文執行。
+依 `game-promo-video-ffmpeg` skill(三段 pipeline)與 `rulebook/93`(配樂用原版鐵則)擬定。
+本文件是**計畫**;實作腳本已存在(`scripts/make_promo.sh` v4 + `promo_build/rec_*.sh`),本輪只更新計畫,尚未重新產片。
+
+> **這一版為什麼要重拍**:現有 YouTube 片(youtu.be/TTQcoItbF38)的所有實機畫面都是舊 **320×200** 錄的——
+> 中文字幕又糊又擠。引擎已改用 **PC98 雙層 640×400 高解析**(字幕/面板/懸停句畫進 `_scaleBuf` 疊層,
+> 相對變小、真 crisp)。重拍的**核心動作 = 把錄製從 320 拉到 640**,並新增一段「糊→清」前後對比,
+> 把清晰度當成這一版的新賣點之一。
+
+---
 
 ## 1. 目標與規格
 
 - **時長** 60–75 秒;**解析度** 1280×720;**FPS** 25。
-- **賣點順序**(這片要讓人記住的三件事):
+- **theme(沿用 v4,不重挑)**:「羊皮紙與魔法書」——token 萃取自遊戲本身
+  (閣樓暖木 `#120b06`/`#3a2412`、羊皮紙 `#e8d9b0`、琥珀標題 `#d98e2b`、遊戲字幕綠 `#1b6103`/`#2f9e0a`、磚紅場景標 `#ac301c`)。
+- **敘事骨架(沿用 v4)**:骨架 E(實機錄影混剪為主)+ 對白卡(骨架 C)穿插。
+- **賣點順序**(這片要讓人記住的):
   1. 完整中文字幕(補足英文 CD 版缺的約四成對白)。
-  2. 保留 CD 英語配音(Chris Barrie 原聲)。
-  3. 一鍵(F8)中/英字幕切換 + 經典英式冷笑話終於看懂。
-- **調性**:奇幻詼諧(對應 Simon 的黑爵士式冷幽默),不要嚴肅史詩腔。
+  2. **640×480 高解析,中文字終於清晰**(本版新增;糊→清對比段)。
+  3. 保留 CD 英語配音(Chris Barrie 原聲)+ F8 中/英切換。
+  4. 經典英式冷笑話(托爾金惡搞、巨魔橋)終於看懂。
+- **調性**:奇幻詼諧(黑爵士式冷幽默),不要嚴肅史詩腔。
 
 ## 2. 三段 pipeline
 
-`① 擷取(截圖 + 原版音樂)→ ② 素材(標題卡/字幕卡程序生成)→ ③ ffmpeg 合成(投影片+fade+配樂)`
+`① 擷取(640 crisp 錄影 + 原版音樂)→ ② 素材(標題卡/對白卡/對比卡,程序生成)→ ③ ffmpeg 合成(clip+fade+配樂)`
 
-全程 docker、CPU 限 2 核、可重跑。工具 image 一次建好(`ffmpeg imagemagick fonts-noto-cjk fluidsynth`)。
+全程 docker、CPU 限 2 核、可重跑。工具 image `game-video:latest`(`ffmpeg imagemagick fonts-noto-cjk fluidsynth`)一次建好。
+
+---
 
 ## 3. 素材清單
 
-### 3.1 截圖(Simon 是滑鼠驅動 → 用靜態截圖,不跟 xdotool 纏鬥)
+### 3.1 實機錄影 —— [變更重點] 從 320 拉到 640 crisp 重錄
 
-既有可用(`docs/img/`、`screenshots/`):
-- `docs/img/hero_subtitle.png` — 西蒙+奇皮,字幕「謝謝你,奇皮。」(題圖)
-- `docs/img/intro_montage.png` — 片頭中文字幕連續幀
-- `screenshots/PROOF_full_translation.png`
+現有 `promo_build/rec_clips.sh` 寫死 320×200,**必須改**(這是本輪重拍的關鍵改動):
 
-需補拍(用 `scripts/run_capture.sh` 改存檔點,或既有存檔跳場景):
-- 巨魔橋對話(「你走運了,我正好是個到處推銷滿足的業務員。」)
-- 蠹蟲場景(「這就是歧視——第三級的!」)
-- 動詞列繁中(操作選單:走到/查看/使用)
-- F8 切換前後對照(同一句 英文↔中文,做並排或前後兩張)
-- 存讀檔畫面繁中(「要覆寫嗎? 是 否」)
+| 位置 | 舊(320) | 新(640 crisp) |
+|---|---|---|
+| Xvfb 螢幕 | `-screen 0 320x200x24` | `-screen 0 640x480x24` |
+| x11grab | `-video_size 320x200` | `-video_size 640x480` |
+| xdotool 座標 | 320×200 邏輯座標(如 `160 100`) | **×2**(引擎 hires 下 `_mouse >>= 1`,螢幕 640 → 邏輯 320;要點同一物件需 `320 200`) |
 
-截圖保留遊戲原色,只在合成時加金框。
+> 引擎 initGraphics 為 640×400,經 AGOS aspect 校正顯示為 640×480 全幅(見既有截圖 `docs/img/hero_scene.png`)。
+> `capt_gameplay.sh` 同步比照改 640。改完先錄一小段抽幀確認**字是 crisp、面板中文有出來**(需 `simon_zh16.dcjk` 在 game 目錄)。
 
-### 3.2 配樂 —— [HARD] 用原版遊戲音樂,不自產(rulebook 93)
+要重錄的片段(對應 v4 分鏡的 clip 來源):
+- **R1 片頭魔術秀**(`r1_intro.mp4`):自動播放約 110s,含片頭中文字幕即時渲染。→ 分鏡 s_00 / s_04 取材。
+- **R2 進場景遊玩**(`r2_bedroom.mp4`):連點跳片頭(座標記得 ×2)進場景,邊走動邊錄約 50s,觸發旁白 + 懸停動作句/物件名。→ s_05 / s_08 取材。
+- 重錄後 clip 的時間戳(`ss`)會位移,合成時抽幀對齊、微調 `make_promo.sh` 分鏡的 `ss/dur`。
 
-- Simon 1 原版音樂在 `original_game_floppy/installed/*.MUS`(45 首,AdLib/MT-32 模組格式)。
-- **取得方式**:用 **ScummVM 本身**播放 Simon 的音樂並錄音(最真實):
-  ```bash
-  # 用 patched scummvm 以 disk audio 錄製主題曲(SDL disk driver)
-  SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=/out/cap.raw \
-    scummvm -p /game --auto-detect   # 進到有音樂的場景
-  ffmpeg -f s16le -ar 44100 -ac 2 -i /out/cap.raw /out/simon_bgm.wav
-  ```
-  (AGOS MUS 非標準 MIDI,交給引擎自己的 MIDI/AdLib driver 渲染最準;不要自寫合成器逼近。)
-- **驗證(鐵則 93-2)**:`ffmpeg -i simon_bgm.wav -af volumedetect -f null /dev/null` 看 `mean/max_volume` 非靜音、無 clipping、時長對;10KB/60s = 壞檔重錄。
-- **選曲**:優先片頭主題(最有辨識度);找不到主題就取酒館/森林等有記憶點的場景曲。
+### 3.2 「糊→清」前後對比素材 —— [本版新增]
 
-### 3.3 標題卡設計 token(換皮只改這段)
+新增一段 `split_ba` 式對比(skill 版面庫 D:前後對照),把**同一句字幕**的舊糊版 vs 新清版並排:
 
-- 配色:深紫徑向漸層底(`#241844`→`#0c0818`)、鎏金標題(`#c9a227` + 暗金陰影 `#7a5c14` 浮雕)、米白副標(`#f2ead2`)。
-- 字型:標題 `NotoSerifCJK-Bold`、字幕 `NotoSerifCJK-Regular`(襯線較有奇幻質感;先 `ls` 確認 `.ttc` 路徑存在)。
-- 標題文案:中標「神通妙巫師」/ 英標「Simon the Sorcerer」/ 副標「繁體中文化 · CD 語音 × 完整字幕」。
+- **右(新)**:640 crisp 錄影/截圖裁下字幕區(如 `docs/img/subtitle_crisp.png` 的「你知道嗎 我可是完全自學的」)。
+- **左(舊)**:同一句的 320×200 糊版。**來源**:
+  - git 歷史(commit `3b6ecd3` 之前的 `docs/img/hero_subtitle.png` / `subtitle_2lines.png`),或
+  - 舊 `promo_build/out/*.mp4`(320 錄影)抽幀,或
+  - 暫時把 `run_floppy` 的 `simon_zh24.dcjk` 移開跑一次 320… **不建議**;直接用 git 歷史的舊圖最省。
+- 版面:左右分割 + 中間琥珀色箭頭 `▶`;上緣小字「舊 320」/「新 640」,底部字幕條「看得更清楚了」。
+- 可在 `make_promo.sh` 加一個 `split_hires()`(仿現有 `split_ba()`,吃兩張圖而非中英字串)。
 
-## 4. 分鏡 storyboard(約 11 段)
+### 3.3 配樂 —— [HARD] 用原版遊戲音樂,不自產(rulebook 93)。**沿用不重錄**
+
+- 現成 `promo_build/music/simon_title_bgm.wav`(由 `rec_music.sh` 產:`SDL_AUDIODRIVER=disk` +
+  `-e adlib --music-volume=255` 錄原版 AdLib 主題,全速灌爆需掃描找有聲窗)。音訊與解析度無關,**沿用即可**。
+- 若要重錄:照 `rec_music.sh`,錄完用 python 逐 20s `volumedetect` 掃 `mean_volume > -60dB` 的有聲窗截取
+  (別假設音樂在前段);`ffmpeg -i x.wav -af volumedetect` 驗非靜音、無 clipping、時長對(10KB/60s = 壞檔重錄)。
+
+### 3.4 標題卡 / 對白卡設計 token —— 沿用 v4(§1 的羊皮紙 theme,勿改回 v1 紫金)
+
+- `card()` 暖木徑向漸層底 + 琥珀浮雕標題(暗金陰影 `#6b3d10` + 主金 `#d98e2b` + 米白副標)。
+- `dcard()` 羊皮紙面板 + 陰影 + 磚紅場景標 + 墨綠對白(用遊戲字幕綠,對白專用)。
+- 字型:標題 `NotoSerifCJK-Bold.ttc`、內文 `NotoSerifCJK-Regular.ttc`(無 Medium;用前 `ls` 確認路徑)。
+
+---
+
+## 4. 分鏡 storyboard v5(= v4 + 糊→清對比段;13 段)
 
 | # | 型 | 內容 | 秒 | 字幕/文案 |
 |---|---|---|---|---|
-| 00 | 標題卡 | 主標題 | 6 | 神通妙巫師 / Simon the Sorcerer / 繁體中文化 |
-| 01 | 字幕卡 | 問題點 | 5 | 「英文 CD 版,其實沒有完整字幕。」 |
-| 02 | 截圖 | 嘴動無字(英文 CD 現象) | 4 | 「角色在說話,你卻一個字都看不到。」 |
-| 03 | 字幕卡 | 解法 | 4 | 「用 floppy 完整文字 × CD 英語語音,融合。」 |
-| 04 | 截圖 | 片頭中文字幕(hero) | 6 | 「完整中文字幕,一句不漏。」 |
-| 05 | 截圖 | 巨魔橋 | 6 | 經典對白選段 |
-| 06 | 截圖 | 蠹蟲場景 | 6 | 「連當年沒看懂的冷笑話,都補上了。」 |
-| 07 | 截圖 | 動詞列繁中 | 5 | 「操作選單也中文化。」 |
-| 08 | 截圖 | F8 中英對照 | 6 | 「按 F8,中英字幕即時切換。」 |
-| 09 | 字幕卡 | 特色收束 | 5 | 「英語原聲 · 完整字幕 · 中英切換 · 防拷免手冊」 |
-| 10 | 標題卡 | 結尾/連結 | 6 | github.com/wicanr2/simon-the-sorcerer-cht |
+| 00 | live clip | 遊戲 logo 動畫開場(640 crisp) | 6 | Simon the Sorcerer · 1993 · Adventure Soft |
+| 01 | 標題卡 | 主標題 | 6 | 神通妙巫師 / 繁體中文化 / CD 語音 × Floppy 完整字幕 |
+| 02 | 對白卡 | 問題點 | 5 | 「英文 CD 版沒有完整字幕。嘴巴在動,一個字都看不到。」 |
+| 03 | 對白卡 | 解法 | 5 | 「floppy 完整文字 × CD 英語配音,融合成從未存在過的版本。」 |
+| 04 | live clip | 片頭魔術秀(**640 crisp** 中文字幕即時渲染) | 10 | 「完整中文字幕,一句不漏。」 |
+| **★** | **對比卡** | **糊→清(本版新增)** | **5** | **左 舊 320 糊 / 右 新 640 清;「看得更清楚了」** |
+| 05 | live clip | 場景遊玩(640 crisp,懸停物件名/動詞面板) | 10 | 「操作選單、旁白全程中文。」 |
+| 06 | split_ba | 中/英對照(F8) | 5 | 謝謝你,奇皮。 ↔ Thank-you, Chippy. |
+| 07 | 對白卡 | 托爾金迷 | 6 | 「以托爾金的神聖鬍鬚之名,準備受死吧!!!」 |
+| 08 | live clip | 實際遊玩,旁白中文 | 8 | — |
+| 09 | 對白卡 | 巨魔橋 | 6 | 「你走運了,我正好是個到處推銷滿足的業務員。」 |
+| 10 | 標題卡 | 特色收束 | 5 | 全劇 4035 條一句不漏 / 英語原聲 · F8 中英切換 · 防拷免手冊 |
+| 11 | 標題卡 | 結尾/連結 | 6 | 神通妙巫師 繁中化 / github.com/wicanr2/simon-the-sorcerer-cht |
 
-節奏:標題慢(6s)、亮點 6s/張、結尾留長音;配樂淡入 2s、淡出 3s。
+節奏:標題慢(6s)、live/亮點 8–10s、對白卡 5–6s、結尾留長音;配樂淡入 2s、淡出 3s、`volume 1.6`。
+糊→清對比段放在「秀完 crisp 字幕(#04)之後」——先讓觀眾看到清楚的,再回頭對比舊糊版,升級感最強。
 
 ## 5. 工程注意(skill 踩過的雷)
 
-- **[HARD] 不用 zoompan**:預設靜態圖 + fade(zoompan 幀數爆炸會燒 CPU 8 分鐘)。要動態才餵單幀 + `-frames:v` 收。
-- `docker run --cpus=2` + ffmpeg `-preset veryfast -threads 2`。
-- 預建工具 image(`docker commit` 成 `game-video:latest`),別每次 apt。
-- 先跑靜態版確認流程通,再考慮動態。
-- 字型:`fonts-noto-cjk` 只有 Regular/Bold,無 Medium;用前 `ls` 確認路徑。
-- ImageMagick policy 若擋 `@` 讀檔,`sed` 放行本地讀取。
+- **[HARD] 錄影解析度改 640,但別碰 zoompan**:live clip 用 `enc()`/`clip()` 靜態 fade,不要 zoompan(幀數爆炸燒 CPU 8 分鐘)。
+- `docker run --cpus=2` + ffmpeg `-preset veryfast -threads 2`;工具用預建 `game-video:latest` 別每次 apt。
+- 重錄 clip 後**先抽幀讀圖**確認 crisp(字不糊、面板中文在);再對齊 `make_promo.sh` 的 `ss/dur`。
+- 字型 `fonts-noto-cjk` 只有 Regular/Bold;ImageMagick policy 若擋 `@` 讀檔用 `sed` 放行本地讀取。
+- xdotool 座標記得 ×2(hires `_mouse >>= 1`);沒 ×2 會點錯地方跳不過片頭。
 
 ## 6. 對外發布的 IP 提醒(rulebook 93 但書)
 
 - 原版 Simon 音樂是 Adventure Soft / 作曲者著作權。**本機保存/內部 demo** 用原版沒問題,素材與產片 gitignore 不入庫。
-- **若要公開上傳**(YouTube 等):配上原版音樂 = 散布他人著作,有風險 → **開拍前先向使用者確認**,可能改用授權曲/原創曲。
+- **公開上傳**(YouTube 等):配原版音樂 = 散布他人著作,有風險。現有 YouTube 片已這樣發過;
+  若在意,重發時可改授權曲/原創曲。**維持既有做法前先讓使用者拍板**。
 
-## 7. 執行骨架(CPU-safe 靜態+fade)
-
-沿用 skill 的 `make_promo.sh` 骨架(設計 token 在最上、`card()`/`slide()`/`kb()` 函式、concat + afade 鋪配樂),
-把 §3.3 的 token、§4 的分鏡填入。跑法:
+## 7. 執行骨架(等使用者說「開拍」再做)
 
 ```bash
-# 1) 建工具 image(一次)
+# 0) 改錄製解析度:promo_build/rec_clips.sh 與 capt_gameplay.sh 的 320x200 → 640x480,xdotool 座標 ×2
+# 1) 建工具 image(若無):
 docker run --cpus=2 --name vb debian:bookworm-slim bash -c \
   'apt-get update -qq && apt-get install -y -qq ffmpeg imagemagick fonts-noto-cjk fluidsynth'
 docker commit vb game-video:latest && docker rm vb
-# 2) 合成(限 2 核)
-docker run --rm --cpus=2 -v $PWD/promo_shots:/shots:ro -v /tmp/music:/music:ro \
-  -v /tmp/out:/out -v $PWD/scripts/make_promo.sh:/make.sh:ro game-video:latest bash /make.sh
+# 2) 重錄 640 crisp 畫面(clip 進 promo_build/clips/,music 沿用):
+docker run --rm --cpus=2 -v $PWD/run_floppy:/game -v $PWD/promo_build/out:/out game-video:latest bash /game/../promo_build/rec_clips.sh
+# 3) 加 split_hires() + 糊→清對比段到 make_promo.sh,對齊時間戳
+# 4) 合成(限 2 核):
+docker run --rm --cpus=2 -v $PWD/promo_build/shots:/shots:ro -v $PWD/promo_build/clips:/clips:ro \
+  -v $PWD/promo_build/music:/music:ro -v $PWD/promo_build/out:/out \
+  -v $PWD/scripts/make_promo.sh:/make.sh:ro game-video:latest bash /make.sh
 ```
 
 ## 8. 產出與驗收
 
-- 產出:`dist/simon-cht-promo.mp4`(60–75s,720p,H.264 + AAC)。
-- 驗收:抽 3–4 幀讀圖檢查(標題不糊、字幕不被裁、配色、黑邊、節奏);配樂 ffprobe 非空白。
+- 產出:`dist/simon-cht-promo.mp4`(60–75s,720p,H.264 + AAC;覆蓋舊 v4)。
+- 驗收:抽 3–4 幀讀圖——**live clip 字幕要 crisp(不糊不擠)**、對比段左右差異明顯、標題不糊、字幕不被裁、配色統一、黑邊少、節奏對;配樂 `ffprobe volumedetect` 非空白。
+- 差異化(vs 現有 YouTube 片):畫面 320→640 crisp、新增糊→清對比段;theme 仍羊皮紙(同 v4,不算新片而是升級重拍)。
 - 影片與音樂素材 **gitignore 不入庫**(同遊戲原檔)。
 
 ---
 
-*相關:`rulebook/93`(素材真實性)、`game-promo-video-ffmpeg` skill(合成實務)、`retro-game-playtest`(截圖)。*
+*相關:`rulebook/93`(素材真實性)、`game-promo-video-ffmpeg` skill(合成實務)、`scripts/make_promo.sh`(v4 實作)、`promo_build/rec_*.sh`(錄製)、記憶 [[sdl-disk-audio-capture-gotchas]](AdLib 錄音雷)、[[agos-hires-cjk-subtitle-empty-sprite-overlay]](crisp 字幕機制)。*
