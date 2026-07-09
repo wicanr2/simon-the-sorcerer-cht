@@ -1,8 +1,33 @@
 diff --git a/engines/agos/agos.cpp b/engines/agos/agos.cpp
-index af27f131..64f8cb3b 100644
+index af27f131..e51ff9a0 100644
 --- a/engines/agos/agos.cpp
 +++ b/engines/agos/agos.cpp
-@@ -1061,6 +1061,36 @@ Common::Error AGOSEngine::go() {
+@@ -607,6 +607,15 @@ Common::Error AGOSEngine::init() {
+ 		_internalHeight <<= 1;
+ 	}
+ 
++	// 非上游: Simon1 繁中融合 — 若 CHT 字模在場, 啟用 640x400 dual-layer 高解析畫布
++	// (沿用 PC98 的 _backBuf(邏輯 320x200)+ _scaleBuf(640x400 高解析疊層)機制),
++	// 讓中文字以原生點陣畫在放大後的畫布上, 相對變小、清晰不擠。
++	if (getGameType() == GType_SIMON1 && Common::File::exists("simon_zh24.dcjk")) {
++		_chtHires = true;
++		_internalWidth = _screenWidth << 1;    // 640
++		_internalHeight = _screenHeight << 1;  // 400
++	}
++
+ 	if (ConfMan.hasKey("disable_fade_effects"))
+ 		_neverFade = ConfMan.getBool("disable_fade_effects");
+ 
+@@ -648,7 +657,7 @@ Common::Error AGOSEngine::init() {
+ 	_backGroundBuf = new Graphics::Surface();
+ 	_backGroundBuf->create(_screenWidth, _screenHeight, Graphics::PixelFormat::createFormatCLUT8());
+ 
+-	if (getGameType() == GType_FF || getGameType() == GType_PP || (getGameType() == GType_ELVIRA1 && getPlatform() == Common::kPlatformPC98)) {
++	if (getGameType() == GType_FF || getGameType() == GType_PP || (getGameType() == GType_ELVIRA1 && getPlatform() == Common::kPlatformPC98) || _chtHires) {
+ 		_backBuf = new Graphics::Surface();
+ 		_backBuf->create(_screenWidth, _screenHeight, Graphics::PixelFormat::createFormatCLUT8());
+ 		_scaleBuf = new Graphics::Surface();
+@@ -1061,6 +1070,37 @@ Common::Error AGOSEngine::go() {
  		loadMenuFile();
  	}
  
@@ -22,6 +47,7 @@ index af27f131..64f8cb3b 100644
 +		bool fontOk = chtLoadFont(_cht, "simon_zh24.dcjk");
 +		bool tabOk = chtLoadTable(_cht, "simon_zh.tab");
 +		chtLoadVoiceMap(_cht, "simon_voice.map");
++		chtLoadFont16(_cht, "simon_zh16.dcjk");   // 指令面板小字模(可選, 缺就不畫面板中文)
 +		if (fontOk && tabOk) {
 +			_chtActive = true;
 +			_subtitles = true;
@@ -40,7 +66,7 @@ index af27f131..64f8cb3b 100644
  
  	if (getGameType() != GType_PP && getGameType() != GType_FF) {
 diff --git a/engines/agos/agos.h b/engines/agos/agos.h
-index 6a8d2237..21d94a19 100644
+index 6a8d2237..5a7de2b8 100644
 --- a/engines/agos/agos.h
 +++ b/engines/agos/agos.h
 @@ -38,6 +38,7 @@
@@ -51,7 +77,7 @@ index 6a8d2237..21d94a19 100644
  
  /**
   * This is the namespace of the AGOS engine.
-@@ -386,6 +387,14 @@ protected:
+@@ -386,6 +387,15 @@ protected:
  	bool _pause;
  	bool _speech;
  	bool _subtitles;
@@ -62,11 +88,12 @@ index 6a8d2237..21d94a19 100644
 +	bool _chtActive;   // 融合模式啟用(字型+譯表就緒)
 +	byte _chtBuf[2][1024];
 +	int _chtBufSlot;
++	bool _chtHires = false;   // 640x400 dual-layer 高解析畫布(沿用 PC98 機制, CJK 清晰不擠)
 +	byte _chtLead;     // windowDrawChar Big5 雙位元組狀態
  	bool _vgaVar9;
  	int16 _chanceModifier;
  	bool _restoreWindow6;
-@@ -957,6 +966,10 @@ protected:
+@@ -957,6 +967,11 @@ protected:
  
  	void renderStringAmiga(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
  	void renderString(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
@@ -74,6 +101,7 @@ index 6a8d2237..21d94a19 100644
 +	void chtRenderStringCJK(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
 +	bool chtPrintScreenText(uint vgaSpriteId, uint color, const char *string, int16 x, int16 y, int16 width);
 +	void chtDrawBig5OnSurface(WindowBlock *window, uint x, uint y, byte lead, byte trail);
++	void chtDrawVerbPanel(Graphics::Surface *screen);
  
  	void writeChar(WindowBlock *window, int x, int y, int offs, int val);
  
@@ -203,6 +231,72 @@ index 05451427..db49128f 100644
  	if (c == 12) {
  		clearWindow(window);
  	} else if (c == 13 || c == 10) {
+diff --git a/engines/agos/cursor.cpp b/engines/agos/cursor.cpp
+index 3cb73123..f5f6bd7a 100644
+--- a/engines/agos/cursor.cpp
++++ b/engines/agos/cursor.cpp
+@@ -354,6 +354,7 @@ void AGOSEngine_PuzzlePack::handleMouseMoved() {
+ 
+ 	CursorMan.showMouse(true);
+ 	_mouse = _eventMan->getMousePos();
++	if (_chtHires) { _mouse.x >>= 1; _mouse.y >>= 1; }   // 640x400→320x200 還原給 hitarea
+ 
+ 	x = 0;
+ 	if (_lastHitArea3 == 0 && _leftButtonDown) {
+@@ -387,6 +388,7 @@ void AGOSEngine_Simon1::handleMouseMoved() {
+ 
+ 	CursorMan.showMouse(true);
+ 	_mouse = _eventMan->getMousePos();
++	if (_chtHires) { _mouse.x >>= 1; _mouse.y >>= 1; }   // 640x400→320x200 還原給 hitarea
+ 
+ 	if (_defaultVerb) {
+ 		uint id = 101;
+@@ -479,6 +481,7 @@ void AGOSEngine_PN::handleMouseMoved() {
+ 
+ 	CursorMan.showMouse(true);
+ 	_mouse = _eventMan->getMousePos();
++	if (_chtHires) { _mouse.x >>= 1; _mouse.y >>= 1; }   // 640x400→320x200 還原給 hitarea
+ 
+ 	if (_leftClick == true) {
+ 		_leftClick = false;
+@@ -546,6 +549,7 @@ void AGOSEngine::handleMouseMoved() {
+ 
+ 	CursorMan.showMouse(true);
+ 	_mouse = _eventMan->getMousePos();
++	if (_chtHires) { _mouse.x >>= 1; _mouse.y >>= 1; }   // 640x400→320x200 還原給 hitarea
+ 
+ 	if (getGameType() == GType_WW) {
+ 		if (_variableArray[51] != 0 && _mouseCursor != _variableArray[51]) {
+@@ -788,7 +792,7 @@ void AGOSEngine::initMouse() {
+ 	_maxCursorWidth = 16;
+ 	_maxCursorHeight = 16;
+ 
+-	if (getGameId() == GID_ELVIRA1 && getPlatform() == Common::kPlatformPC98) {
++	if ((getGameId() == GID_ELVIRA1 && getPlatform() == Common::kPlatformPC98) || _chtHires) {
+ 		_maxCursorWidth <<= 1;
+ 		_maxCursorHeight <<= 1;
+ 	}
+@@ -873,7 +877,7 @@ void AGOSEngine::drawMousePointer() {
+ 			src += 2;
+ 		}
+ 
+-		if (getGameId() == GID_ELVIRA1 && getPlatform() == Common::kPlatformPC98) {
++		if ((getGameId() == GID_ELVIRA1 && getPlatform() == Common::kPlatformPC98) || _chtHires) {
+ 			// Simple 2x upscaling for the cursor in dual layer hi-res mode.
+ 			uint8 ptch = 16;
+ 			uint16 *dst1 = &((uint16*)_mouseData)[16 * 16 * 2 - 1];
+diff --git a/engines/agos/draw.cpp b/engines/agos/draw.cpp
+index 944797f9..c33f039b 100644
+--- a/engines/agos/draw.cpp
++++ b/engines/agos/draw.cpp
+@@ -840,6 +840,7 @@ void AGOSEngine::displayScreen() {
+ 		}
+ 	}
+ 
++	chtDrawVerbPanel(screen);   // 非上游: 疊上中文指令面板標籤(畫在已鎖 surface, 解鎖前)
+ 	updateBackendSurface();
+ 
+ 	if (getGameType() == GType_FF && _scrollFlag) {
 diff --git a/engines/agos/event.cpp b/engines/agos/event.cpp
 index db3ba144..7edc9a0d 100644
 --- a/engines/agos/event.cpp
@@ -217,6 +311,24 @@ index db3ba144..7edc9a0d 100644
  				_keyPressed = event.kbd;
  				break;
  			case Common::EVENT_MOUSEMOVE:
+diff --git a/engines/agos/gfx.cpp b/engines/agos/gfx.cpp
+index 06dfaef6..d9732f4a 100644
+--- a/engines/agos/gfx.cpp
++++ b/engines/agos/gfx.cpp
+@@ -1035,11 +1035,11 @@ void AGOSEngine::verticalScroll(VC10_state *state) {
+ }
+ 
+ Graphics::Surface *AGOSEngine::getBackendSurface() const {
+-	return (getGameId() == GID_ELVIRA1 && getPlatform() == Common::kPlatformPC98) ? _backBuf : _system->lockScreen();
++	return ((getGameId() == GID_ELVIRA1 && getPlatform() == Common::kPlatformPC98) || _chtHires) ? _backBuf : _system->lockScreen();
+ }
+ 
+ void AGOSEngine::updateBackendSurface(Common::Rect *area) const {
+-	if (getGameId() == GID_ELVIRA1 && getPlatform() == Common::kPlatformPC98) {
++	if ((getGameId() == GID_ELVIRA1 && getPlatform() == Common::kPlatformPC98) || _chtHires) {
+ 		int x = 0;
+ 		int y = 0;
+ 		int w = _screenWidth;
 diff --git a/engines/agos/module.mk b/engines/agos/module.mk
 index 37432e1e..be4c4ce4 100644
 --- a/engines/agos/module.mk
@@ -407,7 +519,7 @@ index 1aa590b8..4c8b9b0d 100644
  	char *convertedString2 = convertedString;
  	int16 height, talkDelay;
 diff --git a/engines/agos/verb.cpp b/engines/agos/verb.cpp
-index f2212260..cb2c668d 100644
+index f2212260..d0862891 100644
 --- a/engines/agos/verb.cpp
 +++ b/engines/agos/verb.cpp
 @@ -120,6 +120,36 @@ static const char *const german_verb_names[] = {
@@ -465,3 +577,110 @@ index f2212260..cb2c668d 100644
  		CHECK_BOUNDS(hitarea_id, english_verb_names);
  		txt = verb_names[hitarea_id];
  	}
+@@ -349,6 +383,106 @@ void AGOSEngine::showActionString(const byte *string) {
+ 		windowPutChar(window, *string);
+ }
+ 
++// 非上游: 在底部 12 格指令面板疊上 16x16 中文 verb 標籤。
++// 面板文字是烘進介面圖的英文像素(不走引擎文字系統),故以覆蓋層處理:
++// 對每個 verb box(101..112)取樣底色+英文字色 → 清掉英文區 → 用取樣到的字色畫中文。
++// 每格取樣 = hover 反白時取到反白色, 中文自動跟著高亮。畫在 displayScreen 已鎖的 surface。
++void AGOSEngine::chtDrawVerbPanel(Graphics::Surface *screen) {
++	if (!_chtActive || _chtSubLang != 1 || getGameType() != GType_SIMON1 || !_cht.font16 || !screen)
++		return;
++	const int fw = _cht.fontW16, fh = _cht.fontH16, bpr = _cht.fontBpr16;
++	byte *sp = (byte *)screen->getPixels();       // hires 時 = _backBuf(320x200 邏輯層)
++	const uint pitch = screen->pitch;
++
++	// hires: 找調色盤中「最亮(最白)」的 index 當面板字色(高對比);中文畫進 _scaleBuf 高解析疊層
++	const bool hires = _chtHires && _scaleBuf;
++	int whiteIdx = -1, whiteBright = -1;
++	byte *hp = nullptr; uint hpitch = 0;
++	if (hires) {
++		for (int i = 1; i < 256; i++) {   // 跳過 0(透明/黑)
++			int s = _currentPalette[i * 3] + _currentPalette[i * 3 + 1] + _currentPalette[i * 3 + 2];
++			if (s > whiteBright) { whiteBright = s; whiteIdx = i; }
++		}
++		hp = (byte *)_scaleBuf->getPixels();
++		hpitch = _scaleBuf->pitch;
++	}
++	const bool haveWhite = (whiteBright >= 500 && whiteIdx > 0);   // 8-bit 調色盤夠亮才算白
++
++	for (uint id = 101; id <= 112; id++) {
++		HitArea *ha = findBox(id);
++		if (!ha || (ha->flags & kBFBoxDead) || ha->width == 0 || ha->height == 0)
++			continue;
++		int x0 = ha->x, y0 = ha->y, bw = ha->width, bh = ha->height;
++		if (x0 < 0 || y0 < 0 || x0 + bw > screen->w || y0 + bh > screen->h)
++			continue;
++		// 用直方圖取底色(最多數)+ 英文字色(第二多);比角落取樣穩(不會取到文字/邊框)
++		int hist[256]; memset(hist, 0, sizeof(hist));
++		for (int yy = y0; yy < y0 + bh; yy++)
++			for (int xx = x0; xx < x0 + bw; xx++)
++				hist[sp[yy * pitch + xx]]++;
++		int bgI = 0, bgC = -1;
++		for (int i = 0; i < 256; i++) if (hist[i] > bgC) { bgC = hist[i]; bgI = i; }
++		int fgI = -1, fgC = 0;
++		for (int i = 0; i < 256; i++) if (i != bgI && hist[i] > fgC) { fgC = hist[i]; fgI = i; }
++		if (fgI < 0)
++			continue;   // 只有底色(空格)→ 不動
++		byte bg = (byte)bgI, fg = (byte)fgI;
++		// 抹掉 _backBuf 的英文(填底色)
++		for (int yy = y0; yy < y0 + bh; yy++)
++			memset(sp + yy * pitch + x0, bg, bw);
++
++		const char *label = cht_verb_names[id - 101];
++		int nchars = (int)strlen(label) / 2;
++		int textW = nchars * fw;
++
++		if (hires) {
++			// 清 _scaleBuf 對應 2x 區(0=透明→顯示放大後的乾淨底色), 置中畫清晰白字
++			int hx = x0 * 2, hy = y0 * 2, hw = bw * 2, hh = bh * 2;
++			for (int yy = 0; yy < hh; yy++)
++				memset(hp + (hy + yy) * hpitch + hx, 0, hw);
++			int bx = hx + (hw - textW) / 2; if (bx < hx) bx = hx;
++			int by = hy + (hh - fh) / 2;    if (by < hy) by = hy;
++			for (int ci = 0; ci < nchars; ci++) {
++				const byte *g = _cht.glyph16((byte)label[ci * 2], (byte)label[ci * 2 + 1]);
++				if (!g) continue;
++				int gx = bx + ci * fw;
++				for (int row = 0; row < fh; row++) {
++					int yy = by + row;
++					if (yy < hy || yy >= hy + hh) continue;
++					const byte *gr = g + row * bpr;
++					byte *d = hp + yy * hpitch + gx;
++					byte pc = haveWhite ? (byte)whiteIdx : fg;   // 有白就用白, 否則退回英文字色
++					for (int col = 0; col < fw; col++) {
++						if (gx + col < hx || gx + col >= hx + hw) continue;
++						if (gr[col >> 3] & (0x80 >> (col & 7)))
++							d[col] = pc;
++					}
++				}
++			}
++		} else {
++			// 非 hires (320x200): 原地畫, 用取樣到的英文字色
++			int bx = x0 + (bw - textW) / 2; if (bx < x0) bx = x0;
++			int by = y0 + (bh - fh) / 2;    if (by < y0) by = y0;
++			for (int ci = 0; ci < nchars; ci++) {
++				const byte *g = _cht.glyph16((byte)label[ci * 2], (byte)label[ci * 2 + 1]);
++				if (!g) continue;
++				int gx = bx + ci * fw;
++				for (int row = 0; row < fh; row++) {
++					int yy = by + row;
++					if (yy < y0 || yy >= y0 + bh) continue;
++					const byte *gr = g + row * bpr;
++					byte *d = sp + yy * pitch + gx;
++					for (int col = 0; col < fw; col++) {
++						if (gx + col < x0 || gx + col >= x0 + bw) continue;
++						if (gr[col >> 3] & (0x80 >> (col & 7)))
++							d[col] = fg;
++					}
++				}
++			}
++		}
++	}
++}
++
+ void AGOSEngine::handleVerbClicked(uint verb) {
+ 	Subroutine *sub;
+ 	int result;
