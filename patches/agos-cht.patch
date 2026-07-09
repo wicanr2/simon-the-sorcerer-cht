@@ -106,10 +106,10 @@ index 6a8d2237..5a7de2b8 100644
  	void writeChar(WindowBlock *window, int x, int y, int offs, int val);
  
 diff --git a/engines/agos/charset-fontdata.cpp b/engines/agos/charset-fontdata.cpp
-index 193986e3..2b715282 100644
+index 193986e3..eedb3a20 100644
 --- a/engines/agos/charset-fontdata.cpp
 +++ b/engines/agos/charset-fontdata.cpp
-@@ -1298,6 +1298,90 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
+@@ -1298,6 +1298,121 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
  	}
  }
  
@@ -131,7 +131,11 @@ index 193986e3..2b715282 100644
 +		total = 39000;
 +	memset(dst, 0, total);
 +
-+	const int fw = _cht.fontW, fh = _cht.fontH, bpr = _cht.fontBpr;
++	// hires: 字幕用 16px 小字模(與 chtPrintScreenText 一致)
++	const bool small = (_chtHires && _cht.font16);
++	const int fw = small ? _cht.fontW16 : _cht.fontW;
++	const int fh = small ? _cht.fontH16 : _cht.fontH;
++	const int bpr = small ? _cht.fontBpr16 : _cht.fontBpr;
 +	int lineY = 0, curX = 0;
 +	const byte *s = (const byte *)txt;
 +	byte px = (byte)(color + 12);
@@ -141,7 +145,7 @@ index 193986e3..2b715282 100644
 +		if (c == ' ') { curX += fw / 2; continue; }
 +		if (chtIsBig5Lead(c) && *s) {
 +			byte trail = *s++;
-+			const byte *g = _cht.glyph(c, trail);
++			const byte *g = small ? _cht.glyph16(c, trail) : _cht.glyph(c, trail);
 +			if (g && curX + fw <= (int)width) {
 +				for (int row = 0; row < fh; row++) {
 +					int yy = lineY + row;
@@ -167,6 +171,33 @@ index 193986e3..2b715282 100644
 +	const byte *g = _cht.glyph(lead, trail);
 +	if (!g)
 +		return;
++
++	// hires: 視窗文字(懸停動作句/物件名)畫進 _scaleBuf 高解析疊層 → 清晰、相對變小。
++	// compact map: _scaleBuf x = 2*視窗左緣 + 字元在視窗內的像素位移(前進量維持 24px 原生,不放大)。
++	// 因位置非乾淨 2x 對應, 用全螢幕合成(懸停句短、偶發, 成本可接受)。清除靠 clearWindow hook。
++	if (_chtHires && _scaleBuf) {
++		int fw = _cht.fontW, fh = _cht.fontH, bpr = _cht.fontBpr;
++		byte tc = (byte)(window->textColor ? window->textColor : 15);
++		int oy = (int)y - (fh - 8); if (oy < 0) oy = 0;
++		int bx = window->x * 8 + (int)x;      // 2*視窗左緣 + (x - 視窗左緣) = 視窗左緣*8 + x
++		int by = window->y + oy;              // 同理垂直
++		byte *hp = (byte *)_scaleBuf->getPixels();
++		uint hpitch = _scaleBuf->pitch;
++		for (int row = 0; row < fh; row++) {
++			int yy = by + row;
++			if (yy < 0 || yy >= _scaleBuf->h) continue;
++			const byte *gr = g + row * bpr;
++			byte *d = hp + yy * hpitch + bx;
++			for (int col = 0; col < fw; col++) {
++				if (bx + col < 0 || bx + col >= _scaleBuf->w) break;
++				if (gr[col >> 3] & (0x80 >> (col & 7)))
++					d[col] = tc;
++			}
++		}
++		updateBackendSurface(nullptr);   // 全螢幕合成(_scaleBuf 疊層蓋上放大底圖)
++		return;
++	}
++
 +	Graphics::Surface *screen = getBackendSurface();
 +	byte *sp = (byte *)screen->getPixels();
 +	uint pitch = screen->pitch;
@@ -421,7 +452,7 @@ index d9a2deac..3108d058 100644
  	void loadSfxTable(const char *gameFilename, uint32 base);
  	void readVoiceFile(const Common::Path &filename);
 diff --git a/engines/agos/string.cpp b/engines/agos/string.cpp
-index 1aa590b8..4c8b9b0d 100644
+index 1aa590b8..d7494120 100644
 --- a/engines/agos/string.cpp
 +++ b/engines/agos/string.cpp
 @@ -135,6 +135,20 @@ const byte *AGOSEngine::getStringPtrByID(uint16 stringId, bool upperCase) {
@@ -445,7 +476,7 @@ index 1aa590b8..4c8b9b0d 100644
  	// WORKAROUND bug #2780: The French version of Simon 1 and the
  	// Polish version of Simon 2 used excess spaces, at the end of many
  	// messages, so we strip off those excess spaces.
-@@ -480,7 +494,72 @@ bool AGOSEngine::printNameOf(Item *item, uint x, uint y) {
+@@ -480,7 +494,75 @@ bool AGOSEngine::printNameOf(Item *item, uint x, uint y) {
  	return true;
  }
  
@@ -460,7 +491,10 @@ index 1aa590b8..4c8b9b0d 100644
 +	if (!hasBig5)
 +		return false;
 +
-+	const int fw = _cht.fontW, fh = _cht.fontH;
++	// hires: 字幕用 16px 小字模(sprite 放大 2x 後 32px, 比 24px→48px 小),仍走 sprite 系統(引擎自動計時/清除)
++	const bool subSmall = (_chtHires && _cht.font16);
++	const int fw = subSmall ? _cht.fontW16 : _cht.fontW;
++	const int fh = subSmall ? _cht.fontH16 : _cht.fontH;
 +	int usableW = width;
 +	if (usableW < fw * 4)
 +		usableW = 288;
@@ -684,3 +718,27 @@ index f2212260..d0862891 100644
  void AGOSEngine::handleVerbClicked(uint verb) {
  	Subroutine *sub;
  	int result;
+diff --git a/engines/agos/window.cpp b/engines/agos/window.cpp
+index 03835590..3f58d5cc 100644
+--- a/engines/agos/window.cpp
++++ b/engines/agos/window.cpp
+@@ -109,6 +109,19 @@ void AGOSEngine::closeWindow(uint a) {
+ 
+ void AGOSEngine::clearWindow(WindowBlock *window) {
+ 	clearHiResTextLayer();
++	// hires: 清掉此視窗在 _scaleBuf 高解析疊層的中文(compact map: 左緣 window->x*16),
++	// 否則舊的懸停句/物件名會殘留。over-clear + clamp 保險。
++	if (_chtHires && _scaleBuf && window) {
++		int hx = window->x * 16, hw = window->width * 16;
++		int hy = window->y * 2 - 32, hh = window->height * 16 + 48;
++		if (hx < 0) hx = 0; if (hy < 0) hy = 0;
++		if (hx + hw > _scaleBuf->w) hw = _scaleBuf->w - hx;
++		if (hy + hh > _scaleBuf->h) hh = _scaleBuf->h - hy;
++		byte *hp = (byte *)_scaleBuf->getPixels();
++		for (int yy = 0; yy < hh; yy++)
++			memset(hp + (hy + yy) * _scaleBuf->pitch + hx, 0, hw > 0 ? hw : 0);
++		updateBackendSurface(nullptr);
++	}
+ 	if (window->flags & 0x10)
+ 		restoreWindow(window);
+ 	else
