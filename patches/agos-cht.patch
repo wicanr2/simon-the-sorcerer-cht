@@ -78,10 +78,10 @@ index 6a8d2237..21d94a19 100644
  	void writeChar(WindowBlock *window, int x, int y, int offs, int val);
  
 diff --git a/engines/agos/charset-fontdata.cpp b/engines/agos/charset-fontdata.cpp
-index 193986e3..819356db 100644
+index 193986e3..2b715282 100644
 --- a/engines/agos/charset-fontdata.cpp
 +++ b/engines/agos/charset-fontdata.cpp
-@@ -1298,6 +1298,84 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
+@@ -1298,6 +1298,90 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
  	}
  }
  
@@ -161,6 +161,12 @@ index 193986e3..819356db 100644
 +				d[col] = tc;
 +		}
 +	}
++	// getBackendSurface() 鎖了螢幕(_system->lockScreen()),必須配對解鎖,
++	// 比照 windowDrawChar 用 updateBackendSurface()。漏掉會讓螢幕永久鎖住:
++	// debug build 下一次 lockScreen 撞 !_screenIsLocked 斷言 abort;
++	// release build(NDEBUG,assert 被移除)則後續渲染錯位 → 全畫面文字糊成亂碼。
++	Common::Rect dirtyRect(x, oy, x + fw, oy + fh);
++	updateBackendSurface(&dirtyRect);
 +}
 +
  static const byte czech_simonFont[] = {
