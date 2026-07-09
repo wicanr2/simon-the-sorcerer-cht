@@ -32,6 +32,33 @@ bool chtLoadFont(ChtFusion &fus, const char *filename) {
 	return true;
 }
 
+// 載入 16x16 DCJK 小字型到 fus.font16 (指令面板用)
+bool chtLoadFont16(ChtFusion &fus, const char *filename) {
+	Common::File f;
+	if (!f.open(filename))
+		return false;
+	byte hdr[15];
+	if (f.read(hdr, 15) != 15)
+		return false;
+	if (memcmp(hdr, "DCJK", 4) != 0)
+		return false;
+	fus.fontW16 = hdr[5];
+	fus.fontH16 = hdr[6];
+	fus.fontBpr16 = hdr[7];
+	fus.numGlyphs16 = READ_LE_UINT32(hdr + 11);
+	uint32 dataSize = fus.numGlyphs16 * fus.fontBpr16 * fus.fontH16;
+	fus.font16 = (byte *)malloc(dataSize);
+	if (!fus.font16)
+		return false;
+	if (f.read(fus.font16, dataSize) != dataSize) {
+		free(fus.font16);
+		fus.font16 = nullptr;
+		return false;
+	}
+	debug(0, "CHT: panel font %s loaded (%dx%d, %u glyphs)", filename, fus.fontW16, fus.fontH16, fus.numGlyphs16);
+	return true;
+}
+
 // 載入譯表 simon_zh.tab (STAB: magic, count, [id:4][len:2][big5..])
 bool chtLoadTable(ChtFusion &fus, const char *filename) {
 	Common::File f;

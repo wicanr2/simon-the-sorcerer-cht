@@ -28,10 +28,14 @@ inline int chtBig5Index(byte lead, byte trail) {
 }
 
 struct ChtFusion {
-	// 字型
+	// 字型 (24x24, 字幕/視窗文字用)
 	byte *font = nullptr;      // DCJK glyph 區起點 (跳過 15-byte header)
 	int fontW = 0, fontH = 0, fontBpr = 0;
 	uint32 numGlyphs = 0;
+	// 小字型 (16x16, 底部指令面板小格用)
+	byte *font16 = nullptr;
+	int fontW16 = 0, fontH16 = 0, fontBpr16 = 0;
+	uint32 numGlyphs16 = 0;
 	// 譯表: floppy stringId -> Big5 字串
 	Common::HashMap<uint32, Common::String> table;
 	// 語音: floppy stringId -> CD speechId
@@ -47,9 +51,18 @@ struct ChtFusion {
 		if (idx < 0 || (uint32)idx >= numGlyphs) return nullptr;
 		return font + (uint32)idx * fontBpr * fontH;
 	}
+
+	// 16x16 小字模版本 (指令面板用)
+	const byte *glyph16(byte lead, byte trail) const {
+		if (!font16) return nullptr;
+		int idx = chtBig5Index(lead, trail);
+		if (idx < 0 || (uint32)idx >= numGlyphs16) return nullptr;
+		return font16 + (uint32)idx * fontBpr16 * fontH16;
+	}
 };
 
 bool chtLoadFont(ChtFusion &fus, const char *filename);
+bool chtLoadFont16(ChtFusion &fus, const char *filename);
 bool chtLoadTable(ChtFusion &fus, const char *filename);
 bool chtLoadVoiceMap(ChtFusion &fus, const char *filename);
 

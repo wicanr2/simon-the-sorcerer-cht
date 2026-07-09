@@ -66,7 +66,7 @@ index af27f131..e51ff9a0 100644
  
  	if (getGameType() != GType_PP && getGameType() != GType_FF) {
 diff --git a/engines/agos/agos.h b/engines/agos/agos.h
-index 6a8d2237..5a7de2b8 100644
+index 6a8d2237..802180a0 100644
 --- a/engines/agos/agos.h
 +++ b/engines/agos/agos.h
 @@ -38,6 +38,7 @@
@@ -77,7 +77,7 @@ index 6a8d2237..5a7de2b8 100644
  
  /**
   * This is the namespace of the AGOS engine.
-@@ -386,6 +387,15 @@ protected:
+@@ -386,6 +387,18 @@ protected:
  	bool _pause;
  	bool _speech;
  	bool _subtitles;
@@ -89,11 +89,14 @@ index 6a8d2237..5a7de2b8 100644
 +	byte _chtBuf[2][1024];
 +	int _chtBufSlot;
 +	bool _chtHires = false;   // 640x400 dual-layer 高解析畫布(沿用 PC98 機制, CJK 清晰不擠)
++	Common::Rect _chtSubRect; // hires: 字幕在 _scaleBuf 的 crisp 區域
++	uint16 _chtSubId = 0;     // hires: 字幕對應的(空)sprite id, 供偵測消失清除
++	uint16 _chtSubZone = 0;
 +	byte _chtLead;     // windowDrawChar Big5 雙位元組狀態
  	bool _vgaVar9;
  	int16 _chanceModifier;
  	bool _restoreWindow6;
-@@ -957,6 +967,11 @@ protected:
+@@ -957,6 +970,12 @@ protected:
  
  	void renderStringAmiga(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
  	void renderString(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
@@ -102,14 +105,15 @@ index 6a8d2237..5a7de2b8 100644
 +	bool chtPrintScreenText(uint vgaSpriteId, uint color, const char *string, int16 x, int16 y, int16 width);
 +	void chtDrawBig5OnSurface(WindowBlock *window, uint x, uint y, byte lead, byte trail);
 +	void chtDrawVerbPanel(Graphics::Surface *screen);
++	void chtClearSubtitle();
  
  	void writeChar(WindowBlock *window, int x, int y, int offs, int val);
  
 diff --git a/engines/agos/charset-fontdata.cpp b/engines/agos/charset-fontdata.cpp
-index 193986e3..eedb3a20 100644
+index 193986e3..175044a6 100644
 --- a/engines/agos/charset-fontdata.cpp
 +++ b/engines/agos/charset-fontdata.cpp
-@@ -1298,6 +1298,121 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
+@@ -1298,6 +1298,122 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
  	}
  }
  
@@ -131,11 +135,12 @@ index 193986e3..eedb3a20 100644
 +		total = 39000;
 +	memset(dst, 0, total);
 +
-+	// hires: 字幕用 16px 小字模(與 chtPrintScreenText 一致)
-+	const bool small = (_chtHires && _cht.font16);
-+	const int fw = small ? _cht.fontW16 : _cht.fontW;
-+	const int fh = small ? _cht.fontH16 : _cht.fontH;
-+	const int bpr = small ? _cht.fontBpr16 : _cht.fontBpr;
++	// hires: sprite 留空(memset 已清 0),僅供 talk 計時/生命週期;
++	// 實際 crisp 字幕由 chtPrintScreenText 畫進 _scaleBuf 高解析疊層。
++	if (_chtHires && _scaleBuf)
++		return;
++
++	const int fw = _cht.fontW, fh = _cht.fontH, bpr = _cht.fontBpr;
 +	int lineY = 0, curX = 0;
 +	const byte *s = (const byte *)txt;
 +	byte px = (byte)(color + 12);
@@ -145,7 +150,7 @@ index 193986e3..eedb3a20 100644
 +		if (c == ' ') { curX += fw / 2; continue; }
 +		if (chtIsBig5Lead(c) && *s) {
 +			byte trail = *s++;
-+			const byte *g = small ? _cht.glyph16(c, trail) : _cht.glyph(c, trail);
++			const byte *g = _cht.glyph(c, trail);
 +			if (g && curX + fw <= (int)width) {
 +				for (int row = 0; row < fh; row++) {
 +					int yy = lineY + row;
@@ -317,17 +322,23 @@ index 3cb73123..f5f6bd7a 100644
  			uint8 ptch = 16;
  			uint16 *dst1 = &((uint16*)_mouseData)[16 * 16 * 2 - 1];
 diff --git a/engines/agos/draw.cpp b/engines/agos/draw.cpp
-index 944797f9..c33f039b 100644
+index 944797f9..8b437871 100644
 --- a/engines/agos/draw.cpp
 +++ b/engines/agos/draw.cpp
-@@ -840,6 +840,7 @@ void AGOSEngine::displayScreen() {
+@@ -840,8 +840,13 @@ void AGOSEngine::displayScreen() {
  		}
  	}
  
 +	chtDrawVerbPanel(screen);   // 非上游: 疊上中文指令面板標籤(畫在已鎖 surface, 解鎖前)
  	updateBackendSurface();
  
++	// hires: 字幕對應的空 sprite 消失(talk 結束/被 stopAnimate)時, 清掉 _scaleBuf 上的 crisp 疊層
++	if (_chtHires && _chtSubId != 0 && !isSpriteLoaded(_chtSubId, _chtSubZone))
++		chtClearSubtitle();
++
  	if (getGameType() == GType_FF && _scrollFlag) {
+ 		scrollScreen();
+ 	}
 diff --git a/engines/agos/event.cpp b/engines/agos/event.cpp
 index db3ba144..7edc9a0d 100644
 --- a/engines/agos/event.cpp
@@ -452,7 +463,7 @@ index d9a2deac..3108d058 100644
  	void loadSfxTable(const char *gameFilename, uint32 base);
  	void readVoiceFile(const Common::Path &filename);
 diff --git a/engines/agos/string.cpp b/engines/agos/string.cpp
-index 1aa590b8..d7494120 100644
+index 1aa590b8..0fac64e3 100644
 --- a/engines/agos/string.cpp
 +++ b/engines/agos/string.cpp
 @@ -135,6 +135,20 @@ const byte *AGOSEngine::getStringPtrByID(uint16 stringId, bool upperCase) {
@@ -476,7 +487,7 @@ index 1aa590b8..d7494120 100644
  	// WORKAROUND bug #2780: The French version of Simon 1 and the
  	// Polish version of Simon 2 used excess spaces, at the end of many
  	// messages, so we strip off those excess spaces.
-@@ -480,7 +494,75 @@ bool AGOSEngine::printNameOf(Item *item, uint x, uint y) {
+@@ -480,7 +494,138 @@ bool AGOSEngine::printNameOf(Item *item, uint x, uint y) {
  	return true;
  }
  
@@ -491,10 +502,7 @@ index 1aa590b8..d7494120 100644
 +	if (!hasBig5)
 +		return false;
 +
-+	// hires: 字幕用 16px 小字模(sprite 放大 2x 後 32px, 比 24px→48px 小),仍走 sprite 系統(引擎自動計時/清除)
-+	const bool subSmall = (_chtHires && _cht.font16);
-+	const int fw = subSmall ? _cht.fontW16 : _cht.fontW;
-+	const int fh = subSmall ? _cht.fontH16 : _cht.fontH;
++	const int fw = _cht.fontW, fh = _cht.fontH;
 +	int usableW = width;
 +	if (usableW < fw * 4)
 +		usableW = 288;
@@ -542,8 +550,74 @@ index 1aa590b8..d7494120 100644
 +	if (getGameType() == GType_SIMON1) {
 +		uint16 id = 199 + vgaSpriteId;
 +		animate(windowNum, id / 100, id, rx, ry, 12);
++
++		// hires: 字幕 crisp 畫進 _scaleBuf 高解析疊層(24px 原生, 相對變小不擠);
++		// sprite 本身留空只保 talk 計時/生命週期。displayScreen 偵測 sprite 消失時清除。
++		if (_chtHires && _scaleBuf) {
++			chtClearSubtitle();
++			int fw2 = _cht.fontW, fh2 = _cht.fontH, bpr2 = _cht.fontBpr;
++			byte px = (byte)(rcolor + 12);
++			// compact map: sprite 落在 (rx cell = x/8) → 像素 x ≈ rx*8, hires *2 = rx*16;垂直 ry*2。
++			int baseX = rx * 16, baseY = ry * 2;
++			byte *hp = (byte *)_scaleBuf->getPixels();
++			uint hpitch = _scaleBuf->pitch;
++			int curX = 0, lineY = 0, maxX = 0;
++			const byte *t = (const byte *)out.c_str();
++			while (*t) {
++				byte c = *t++;
++				if (c == '\n') { lineY += fh2; curX = 0; continue; }
++				if (c == ' ') { curX += fw2 / 2; continue; }
++				if (chtIsBig5Lead(c) && *t) {
++					byte trail = *t++;
++					const byte *g = _cht.glyph(c, trail);
++					if (g) {
++						for (int row = 0; row < fh2; row++) {
++							int yy = baseY + lineY + row;
++							if (yy < 0 || yy >= _scaleBuf->h) continue;
++							const byte *gr = g + row * bpr2;
++							byte *d = hp + yy * hpitch + baseX + curX;
++							for (int col = 0; col < fw2; col++) {
++								int xx = baseX + curX + col;
++								if (xx < 0) continue;
++								if (xx >= _scaleBuf->w) break;
++								if (gr[col >> 3] & (0x80 >> (col & 7)))
++									d[col] = px;
++							}
++						}
++					}
++					curX += fw2;
++					if (curX > maxX) maxX = curX;
++				} else {
++					curX += fw2 / 2;
++					if (curX > maxX) maxX = curX;
++				}
++			}
++			_chtSubRect = Common::Rect(baseX, baseY, baseX + maxX, baseY + lineY + fh2);
++			_chtSubId = id;
++			_chtSubZone = id / 100;
++			updateBackendSurface(nullptr);
++		}
 +	}
 +	return true;
++}
++
++// 繁中融合 (非上游): 清掉 _scaleBuf 上的字幕 crisp 疊層(hires)
++void AGOSEngine::chtClearSubtitle() {
++	if (!_chtHires || !_scaleBuf || _chtSubId == 0)
++		return;
++	int x0 = _chtSubRect.left, y0 = _chtSubRect.top;
++	int w = _chtSubRect.width(), h = _chtSubRect.height();
++	if (x0 < 0) { w += x0; x0 = 0; }
++	if (y0 < 0) { h += y0; y0 = 0; }
++	if (x0 + w > _scaleBuf->w) w = _scaleBuf->w - x0;
++	if (y0 + h > _scaleBuf->h) h = _scaleBuf->h - y0;
++	if (w > 0 && h > 0) {
++		byte *hp = (byte *)_scaleBuf->getPixels();
++		for (int yy = 0; yy < h; yy++)
++			memset(hp + (y0 + yy) * _scaleBuf->pitch + x0, 0, w);
++	}
++	_chtSubId = 0;
++	updateBackendSurface(nullptr);
 +}
 +
  void AGOSEngine::printScreenText(uint vgaSpriteId, uint color, const char *string, int16 x, int16 y, int16 width) {

@@ -40,6 +40,8 @@ __pycache__/
 # 原始測試截圖目錄(雜物)
 screenshots_gp/
 screenshots_vb/
+screenshots_scene/
+screenshots_sub/
 
 # 影片製作暫存(錄音/截圖)
 promo_build/
