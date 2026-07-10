@@ -42,6 +42,8 @@ screenshots_gp/
 screenshots_vb/
 screenshots_scene/
 screenshots_sub/
+screenshots_talk/
+screenshots_talk2/
 
 # 影片製作暫存(錄音/截圖)
 promo_build/
@@ -50,3 +52,4 @@ promo_build/
 .toolcache/
 dist-mac/
 dist-mac-dl/
+screenshots_talk3/
