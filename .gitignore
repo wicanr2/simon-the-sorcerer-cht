@@ -54,3 +54,6 @@ dist-mac/
 dist-mac-dl/
 screenshots_talk3/
 screenshots_verify/
+claude-session/
+previous-work.md
+*dev-setup*.tar.zst
