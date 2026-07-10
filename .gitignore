@@ -50,6 +50,7 @@ promo_build/
 
 # 下載的建置工具快取(appimagetool 等)
 .toolcache/
+dist-all/
 dist-mac/
 dist-mac-dl/
 screenshots_talk3/

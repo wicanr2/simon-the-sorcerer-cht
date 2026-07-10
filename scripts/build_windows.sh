@@ -1,6 +1,6 @@
 #!/bin/bash
 # Windows 版:mingw-w64 交叉編譯 patched ScummVM(AGOS)+ 收齊所有 DLL + 內含遊戲
-# 產出: dist/win/  (scummvm.exe + *.dll + 遊戲 + 播放.bat)  →  可壓成 portable zip
+# 產出: dist-all/SimonTheSorcerer-CHT-FULL-win64.zip(scummvm.exe + DLL + data + 遊戲 + 播放.bat)
 set -e
 PROJ="/home/anr2/scummvm/simon-1-cht-claude"
 mkdir -p "$PROJ/dist/win"
@@ -8,7 +8,7 @@ docker run --rm -v "$PROJ:/w" -w /w debian:bookworm-slim bash -c '
   set -e
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >/dev/null 2>&1
-  apt-get install -y -qq g++-mingw-w64-x86-64 mingw-w64-tools g++ make wget tar xz-utils \
+  apt-get install -y -qq g++-mingw-w64-x86-64 mingw-w64-tools g++ make wget tar xz-utils zip \
       libz-mingw-w64-dev ca-certificates file >/dev/null 2>&1
 
   HOST=x86_64-w64-mingw32
@@ -37,8 +37,8 @@ docker run --rm -v "$PROJ:/w" -w /w debian:bookworm-slim bash -c '
   make -j$(nproc) 2>&1 | tail -8
   ls -lh scummvm.exe
 
-  # 收齊 DLL
-  OUT=/w/dist/win; mkdir -p $OUT
+  # 收齊 DLL(輸出成 dist-all 內的 portable 目錄, 最後壓成 zip)
+  STAGE=/w/dist-all/SimonTheSorcerer-CHT-win64; rm -rf $STAGE; OUT=$STAGE; mkdir -p $OUT
   cp scummvm.exe $OUT/
   cp "$SDLP/bin/SDL2.dll" $OUT/
   # mingw runtime + zlib
@@ -60,6 +60,15 @@ docker run --rm -v "$PROJ:/w" -w /w debian:bookworm-slim bash -c '
   echo "=== scummvm.exe 相依 DLL ==="
   x86_64-w64-mingw32-objdump -p scummvm.exe | grep "DLL Name" | sort -u
   echo "=== 已收 DLL ==="; ls $OUT/*.dll
-  chown -R '"$(id -u):$(id -g)"' $OUT 2>/dev/null || true
+  # 內含完整遊戲(含 CHT 資產 + 語音)+ 空 saves
+  mkdir -p $OUT/game $OUT/saves
+  cp -rL /w/run_floppy/* $OUT/game/
+  # 壓成 portable zip 放 dist-all, 再刪 staging 目錄(省空間)
+  cd /w/dist-all
+  rm -f SimonTheSorcerer-CHT-FULL-win64.zip
+  ( cd /w/dist-all && zip -rq SimonTheSorcerer-CHT-FULL-win64.zip SimonTheSorcerer-CHT-win64 )
+  rm -rf $STAGE
+  echo "=== 產出 ==="; ls -lh /w/dist-all/SimonTheSorcerer-CHT-FULL-win64.zip
+  chown -R '"$(id -u):$(id -g)"' /w/dist-all 2>/dev/null || true
 '
 echo "=== dist/win ==="; ls -lh "$PROJ/dist/win/" 2>/dev/null

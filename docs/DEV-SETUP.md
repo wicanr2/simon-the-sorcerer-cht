@@ -13,7 +13,21 @@
 | `scripts/` | 各平台建置腳本 | ✅ |
 | `build/scummvm-src/` | 本機工作用的 ScummVM 原始碼樹(已套 patch) | ❌(gitignore) |
 | `run_floppy/` | 可執行的完整遊戲目錄(floppy 資料 + `SIMON.VOC` + CHT 資產) | ❌ |
-| `dist/`、`dist-mac/` | 建置產物 | ❌ |
+| `dist-all/` | **所有打包產物統一放這**(見下) | ❌ |
+
+## 打包產物統一放 `dist-all/`(慣例)
+
+所有可交付/可散布的打包一律輸出到 `dist-all/`(gitignore,不入庫),舊的 `dist/`、`dist-mac/` 已淘汰:
+
+| 產物 | 來源腳本 |
+|---|---|
+| `SimonTheSorcerer-CHT-FULL-x86_64.AppImage` | `scripts/build_appimage.sh` |
+| `SimonTheSorcerer-CHT-FULL-win64.zip` | `scripts/build_windows.sh`(自足:含 exe+DLL+data+遊戲+bat,直接產 zip) |
+| `SimonScummVM-CHT-FULL-mac.tar.gz` | CI `build-mac` 產 `.app` → 本機注入 `run_floppy` + `scummvm-data` → tar 到 `dist-all/` |
+| `simon-cht-promo.mp4` | `scripts/make_promo.sh`(產在 `promo_build/out/`,複製到 `dist-all/`) |
+| `simon-1-cht-dev-setup-YYYYMMDD.tar.zst` | dev-setup 跨機接續包(見 `SETUP.md`) |
+
+清理舊版打包只留最新一份:直接刪 `dist-all/` 內舊檔;中間 staging(mingw 的 portable 目錄、mac 的 `.app` 解壓)腳本跑完會自清。
 
 ## 核心概念:patch,不是 fork
 

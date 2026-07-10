@@ -1,11 +1,11 @@
 #!/bin/bash
 # 完整版 AppImage:patched ScummVM + 內含遊戲(floppy 資料 + CD SIMON.VOC + CHT 資產)
 # 雙擊直接進《神通妙巫師》繁中融合版。
-# 產出: dist/SimonTheSorcerer-CHT-FULL-x86_64.AppImage(私用完整版,含版權資料,不入 git)
+# 產出: dist-all/SimonTheSorcerer-CHT-FULL-x86_64.AppImage(私用完整版,含版權資料,不入 git)
 set -e
 PROJ="/home/anr2/scummvm/simon-1-cht-claude"
 GAME="$PROJ/run_floppy"          # 含 floppy 遊戲檔 + SIMON.VOC + simon_zh24.dcjk/simon_zh.tab/simon_voice.map
-mkdir -p "$PROJ/dist"
+mkdir -p "$PROJ/dist-all"
 [ -f "$GAME/GAMEPC" ] || { echo "!! run_floppy 缺遊戲檔"; exit 1; }
 [ -f "$GAME/SIMON.VOC" ] || echo "!! 警告: 無 SIMON.VOC(語音會關閉)"
 
@@ -62,7 +62,7 @@ EOF
         convert -size 256x256 xc:navy $APP/scummvm.png
 
     cd /tmp
-    ARCH=x86_64 /w/.toolcache/appimagetool --appimage-extract-and-run /tmp/AppDir /w/dist/SimonTheSorcerer-CHT-FULL-x86_64.AppImage 2>&1 | tail -3
-    chown -R '"$(id -u):$(id -g)"' /w/dist 2>/dev/null || true
+    ARCH=x86_64 /w/.toolcache/appimagetool --appimage-extract-and-run /tmp/AppDir /w/dist-all/SimonTheSorcerer-CHT-FULL-x86_64.AppImage 2>&1 | tail -3
+    chown -R '"$(id -u):$(id -g)"' /w/dist-all 2>/dev/null || true
 '
-echo "=== dist ==="; ls -lh "$PROJ/dist/"*.AppImage 2>/dev/null
+echo "=== dist-all ==="; ls -lh "$PROJ/dist-all/"*.AppImage 2>/dev/null
