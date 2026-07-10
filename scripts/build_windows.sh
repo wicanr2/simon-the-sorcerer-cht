@@ -47,6 +47,15 @@ docker run --rm -v "$PROJ:/w" -w /w debian:bookworm-slim bash -c '
     f=$(find /usr/lib/gcc/$HOST /usr/$HOST -name $d 2>/dev/null | head -1); [ -n "$f" ] && cp "$f" $OUT/
   done
   zdll=$(find /usr/$HOST -iname "zlib1.dll" -o -iname "libz-1.dll" 2>/dev/null | head -1); [ -n "$zdll" ] && cp "$zdll" $OUT/ || true
+  # ScummVM 執行期資料檔(GUI 主題/字型/翻譯)—— 缺了會 "Could not find theme / font" 起不來(issue #1)
+  # AGOS 不需 engine-data,只帶 GUI 主題 + 字型(含 CJK,支援中文 GUI)
+  mkdir -p $OUT/data
+  cp gui/themes/scummmodern.zip gui/themes/scummclassic.zip gui/themes/scummremastered.zip \
+     gui/themes/gui-icons.dat gui/themes/shaders.dat gui/themes/translations.dat \
+     dists/engine-data/fonts.dat dists/engine-data/fonts-cjk.dat $OUT/data/
+  echo "=== ScummVM 資料檔 ==="; ls -lh $OUT/data/ | awk "{print \$5,\$NF}"
+  # 播放遊戲.bat(自動建 saves + 指定 GUI 主題/字型資料路徑)
+  printf "@echo off\r\ncd /d \"%%~dp0\"\r\nif not exist saves mkdir saves\r\nscummvm.exe -p game --themepath=data --extrapath=data --auto-detect --savepath=saves\r\npause\r\n" > "$OUT/播放遊戲.bat"
   # 用 objdump 驗證還缺哪些非系統 DLL
   echo "=== scummvm.exe 相依 DLL ==="
   x86_64-w64-mingw32-objdump -p scummvm.exe | grep "DLL Name" | sort -u

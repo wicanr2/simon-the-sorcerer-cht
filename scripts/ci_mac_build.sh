@@ -84,6 +84,13 @@ APP="$DIST/SimonScummVM-CHT.app"; rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$WORK/scummvm.univ" "$APP/Contents/MacOS/scummvm"
 chmod +x "$APP/Contents/MacOS/scummvm"
+# ScummVM 執行期資料檔(GUI 主題/字型/翻譯)—— 缺了會 "Could not find theme / font"(issue #1/#2)
+mkdir -p "$APP/Contents/Resources/scummvm-data"
+cp "$SRC/gui/themes/scummmodern.zip" "$SRC/gui/themes/scummclassic.zip" \
+   "$SRC/gui/themes/scummremastered.zip" "$SRC/gui/themes/gui-icons.dat" \
+   "$SRC/gui/themes/shaders.dat" "$SRC/gui/themes/translations.dat" \
+   "$SRC/dists/engine-data/fonts.dat" "$SRC/dists/engine-data/fonts-cjk.dat" \
+   "$APP/Contents/Resources/scummvm-data/"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -103,11 +110,12 @@ cat > "$APP/Contents/MacOS/launch.sh" <<'LAUNCH'
 #!/bin/bash
 D="$(cd "$(dirname "$0")" && pwd)"
 GAME="$D/../Resources/game"
+DATA="$D/../Resources/scummvm-data"
 SAVE="$HOME/Library/Application Support/simon-cht/saves"; mkdir -p "$SAVE"
 if [ -d "$GAME" ]; then
-  exec "$D/scummvm" -p "$GAME" --savepath="$SAVE" --auto-detect
+  exec "$D/scummvm" -p "$GAME" --themepath="$DATA" --extrapath="$DATA" --savepath="$SAVE" --auto-detect
 else
-  exec "$D/scummvm" --savepath="$SAVE"
+  exec "$D/scummvm" --themepath="$DATA" --extrapath="$DATA" --savepath="$SAVE"
 fi
 LAUNCH
 chmod +x "$APP/Contents/MacOS/launch.sh"

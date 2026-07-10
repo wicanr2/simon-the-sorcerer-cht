@@ -26,6 +26,14 @@ docker run --rm -v "$PROJ:/w" -w /w game-video bash -c '
     # 內含完整遊戲(含 CHT 資產 + 語音)
     cp -rL run_floppy/* $APP/usr/share/simon-game/
 
+    # ScummVM 執行期資料檔(GUI 主題/字型/翻譯)—— 缺了會 "Could not find theme / font" 亂掉(issue #1/#2)
+    mkdir -p $APP/usr/share/scummvm
+    cp build/scummvm-src/gui/themes/scummmodern.zip build/scummvm-src/gui/themes/scummclassic.zip \
+       build/scummvm-src/gui/themes/scummremastered.zip build/scummvm-src/gui/themes/gui-icons.dat \
+       build/scummvm-src/gui/themes/shaders.dat build/scummvm-src/gui/themes/translations.dat \
+       build/scummvm-src/dists/engine-data/fonts.dat build/scummvm-src/dists/engine-data/fonts-cjk.dat \
+       $APP/usr/share/scummvm/
+
     # 開機直接進遊戲(--auto-detect 偵測並執行;savepath 寫到使用者家目錄)
     cat > $APP/AppRun <<"EOF"
 #!/bin/bash
@@ -33,7 +41,9 @@ HERE="$(dirname "$(readlink -f "${0}")")"
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
 SAVE="${XDG_DATA_HOME:-$HOME/.local/share}/simon-cht/saves"
 mkdir -p "$SAVE"
+DATA="${HERE}/usr/share/scummvm"
 exec "${HERE}/usr/bin/scummvm" -p "${HERE}/usr/share/simon-game" \
+     --themepath="$DATA" --extrapath="$DATA" \
      --savepath="$SAVE" --auto-detect "$@"
 EOF
     chmod +x $APP/AppRun
