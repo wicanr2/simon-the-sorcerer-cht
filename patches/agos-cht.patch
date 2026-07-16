@@ -66,7 +66,7 @@ index af27f131..e51ff9a0 100644
  
  	if (getGameType() != GType_PP && getGameType() != GType_FF) {
 diff --git a/engines/agos/agos.h b/engines/agos/agos.h
-index 6a8d2237..802180a0 100644
+index 6a8d2237..d770f3d0 100644
 --- a/engines/agos/agos.h
 +++ b/engines/agos/agos.h
 @@ -38,6 +38,7 @@
@@ -96,7 +96,7 @@ index 6a8d2237..802180a0 100644
  	bool _vgaVar9;
  	int16 _chanceModifier;
  	bool _restoreWindow6;
-@@ -957,6 +970,12 @@ protected:
+@@ -957,6 +970,14 @@ protected:
  
  	void renderStringAmiga(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
  	void renderString(uint vgaSpriteId, uint color, uint width, uint height, const char *txt);
@@ -106,14 +106,16 @@ index 6a8d2237..802180a0 100644
 +	void chtDrawBig5OnSurface(WindowBlock *window, uint x, uint y, byte lead, byte trail);
 +	void chtDrawVerbPanel(Graphics::Surface *screen);
 +	void chtClearSubtitle();
++	byte chtReadableColor(byte idx);   // 亮度守門:只救暗到讀不到的字色,其餘保留原配色
++	byte chtOutlineColor();            // 描邊用最暗的非 0 索引(0 是疊層透明哨兵)
  
  	void writeChar(WindowBlock *window, int x, int y, int offs, int val);
  
 diff --git a/engines/agos/charset-fontdata.cpp b/engines/agos/charset-fontdata.cpp
-index 193986e3..175044a6 100644
+index 193986e3..41606b41 100644
 --- a/engines/agos/charset-fontdata.cpp
 +++ b/engines/agos/charset-fontdata.cpp
-@@ -1298,6 +1298,122 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
+@@ -1298,6 +1298,127 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
  	}
  }
  
@@ -177,21 +179,26 @@ index 193986e3..175044a6 100644
 +	if (!g)
 +		return;
 +
-+	// hires: 視窗文字(懸停動作句/物件名)畫進 _scaleBuf 高解析疊層 → 清晰、相對變小。
-+	// compact map: _scaleBuf x = 2*視窗左緣 + 字元在視窗內的像素位移(前進量維持 24px 原生,不放大)。
-+	// 因位置非乾淨 2x 對應, 用全螢幕合成(懸停句短、偶發, 成本可接受)。清除靠 clearWindow hook。
++	// hires: 視窗文字(懸停動作句/物件名/對話選項)畫進 _scaleBuf 高解析疊層。
++	// [重要] 用 16px 字型 + 乾淨 2x 映射:引擎的視窗是為 8px ASCII 行設計的,textRow 每行只前進 8px。
++	// 若用 24px 字(舊作法),多行視窗(對話選項)每行會疊掉 16px → 糊成一團(issue #4)。
++	// 16px 字在 _scaleBuf 剛好 = 8 邏輯px = 引擎一個行/列 → 行列自然對齊,不重疊。
 +	if (_chtHires && _scaleBuf) {
-+		int fw = _cht.fontW, fh = _cht.fontH, bpr = _cht.fontBpr;
-+		byte tc = (byte)(window->textColor ? window->textColor : 15);
-+		int oy = (int)y - (fh - 8); if (oy < 0) oy = 0;
-+		int bx = window->x * 8 + (int)x;      // 2*視窗左緣 + (x - 視窗左緣) = 視窗左緣*8 + x
-+		int by = window->y + oy;              // 同理垂直
++		const byte *g16 = _cht.glyph16(lead, trail);
++		if (!g16)
++			return;
++		int fw = _cht.fontW16, fh = _cht.fontH16, bpr = _cht.fontBpr16;
++		// issue #4:視窗文字(懸停物件名/對話選項)也可能壓在美術上 → 同樣套亮度守門,
++		// 只救暗到讀不到的,其餘保留原本 textColor(對話選項的編號色/選中色分離才不會被吃掉)。
++		byte tc = chtReadableColor((byte)(window->textColor ? window->textColor : 15));
++		int bx = (int)x * 2;                  // x/y 是邏輯像素 → 乾淨 2x 進 _scaleBuf
++		int by = (int)y * 2;
 +		byte *hp = (byte *)_scaleBuf->getPixels();
 +		uint hpitch = _scaleBuf->pitch;
 +		for (int row = 0; row < fh; row++) {
 +			int yy = by + row;
 +			if (yy < 0 || yy >= _scaleBuf->h) continue;
-+			const byte *gr = g + row * bpr;
++			const byte *gr = g16 + row * bpr;
 +			byte *d = hp + yy * hpitch + bx;
 +			for (int col = 0; col < fw; col++) {
 +				if (bx + col < 0 || bx + col >= _scaleBuf->w) break;
@@ -237,10 +244,10 @@ index 193986e3..175044a6 100644
  	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
  	0x20, 0x70, 0x70, 0x20, 0x20, 0x00, 0x20, 0x00,
 diff --git a/engines/agos/charset.cpp b/engines/agos/charset.cpp
-index 05451427..db49128f 100644
+index 05451427..07a2b166 100644
 --- a/engines/agos/charset.cpp
 +++ b/engines/agos/charset.cpp
-@@ -221,6 +221,26 @@ void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
+@@ -221,6 +221,28 @@ void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
  	byte width = 6;
  	byte textColumnWidth = 8;
  
@@ -254,7 +261,9 @@ index 05451427..db49128f 100644
 +			uint px = window->x * 8 + window->textColumn * 8;
 +			uint py = window->textRow * 8 + window->y;
 +			chtDrawBig5OnSurface(window, px, py, lead, c);
-+			window->textColumn += 3;   // 24px = 3 欄
++			// hires 用 16px 字型 → 一個 CJK 字 = 8 邏輯px = 引擎一欄(_scaleBuf 上 16px);
++			// 非 hires 仍是 24px = 3 欄。textLength 保守 +2,提早換行不會水平溢出視窗。
++			window->textColumn += (_chtHires && _scaleBuf) ? 1 : 3;
 +			window->textLength += 2;
 +			return;
 +		}
@@ -463,7 +472,7 @@ index d9a2deac..3108d058 100644
  	void loadSfxTable(const char *gameFilename, uint32 base);
  	void readVoiceFile(const Common::Path &filename);
 diff --git a/engines/agos/string.cpp b/engines/agos/string.cpp
-index 1aa590b8..0fac64e3 100644
+index 1aa590b8..0bc0d421 100644
 --- a/engines/agos/string.cpp
 +++ b/engines/agos/string.cpp
 @@ -135,6 +135,20 @@ const byte *AGOSEngine::getStringPtrByID(uint16 stringId, bool upperCase) {
@@ -487,7 +496,7 @@ index 1aa590b8..0fac64e3 100644
  	// WORKAROUND bug #2780: The French version of Simon 1 and the
  	// Polish version of Simon 2 used excess spaces, at the end of many
  	// messages, so we strip off those excess spaces.
-@@ -480,7 +494,138 @@ bool AGOSEngine::printNameOf(Item *item, uint x, uint y) {
+@@ -480,7 +494,211 @@ bool AGOSEngine::printNameOf(Item *item, uint x, uint y) {
  	return true;
  }
  
@@ -556,7 +565,9 @@ index 1aa590b8..0fac64e3 100644
 +		if (_chtHires && _scaleBuf) {
 +			chtClearSubtitle();
 +			int fw2 = _cht.fontW, fh2 = _cht.fontH, bpr2 = _cht.fontBpr;
-+			byte px = (byte)(rcolor + 12);
++			// issue #4:亮度守門(只救暗到讀不到的)+ 1px 描邊(壓在花紋美術上也有輪廓)
++			byte px = chtReadableColor((byte)(rcolor + 12));
++			byte ol = chtOutlineColor();
 +			// compact map: sprite 落在 (rx cell = x/8) → 像素 x ≈ rx*8, hires *2 = rx*16;垂直 ry*2。
 +			int baseX = rx * 16, baseY = ry * 2;
 +			byte *hp = (byte *)_scaleBuf->getPixels();
@@ -571,17 +582,29 @@ index 1aa590b8..0fac64e3 100644
 +					byte trail = *t++;
 +					const byte *g = _cht.glyph(c, trail);
 +					if (g) {
-+						for (int row = 0; row < fh2; row++) {
-+							int yy = baseY + lineY + row;
-+							if (yy < 0 || yy >= _scaleBuf->h) continue;
-+							const byte *gr = g + row * bpr2;
-+							byte *d = hp + yy * hpitch + baseX + curX;
-+							for (int col = 0; col < fw2; col++) {
-+								int xx = baseX + curX + col;
-+								if (xx < 0) continue;
-+								if (xx >= _scaleBuf->w) break;
-+								if (gr[col >> 3] & (0x80 >> (col & 7)))
-+									d[col] = px;
++						// pass 1: 描邊(每個字元筆畫像素的 8 鄰域塗最暗色)→ 任意背景都有輪廓
++						// pass 2: 蓋上本體字色。兩趟才不會被相鄰筆畫的描邊吃掉。
++						for (int pass = 0; pass < 2; pass++) {
++							for (int row = 0; row < fh2; row++) {
++								const byte *gr = g + row * bpr2;
++								for (int col = 0; col < fw2; col++) {
++									if (!(gr[col >> 3] & (0x80 >> (col & 7))))
++										continue;
++									int xx = baseX + curX + col, yy = baseY + lineY + row;
++									if (pass == 0) {
++										for (int dy = -1; dy <= 1; dy++)
++											for (int dx = -1; dx <= 1; dx++) {
++												int ox = xx + dx, oy2 = yy + dy;
++												if (ox < 0 || ox >= _scaleBuf->w || oy2 < 0 || oy2 >= _scaleBuf->h)
++													continue;
++												hp[oy2 * hpitch + ox] = ol;
++											}
++									} else {
++										if (xx < 0 || xx >= _scaleBuf->w || yy < 0 || yy >= _scaleBuf->h)
++											continue;
++										hp[yy * hpitch + xx] = px;
++									}
++								}
 +							}
 +						}
 +					}
@@ -592,13 +615,72 @@ index 1aa590b8..0fac64e3 100644
 +					if (curX > maxX) maxX = curX;
 +				}
 +			}
-+			_chtSubRect = Common::Rect(baseX, baseY, baseX + maxX, baseY + lineY + fh2);
++			// +2 邊界:描邊會超出字框 1px,清除範圍要含進去,否則殘留一圈黑邊
++			_chtSubRect = Common::Rect(baseX - 2, baseY - 2, baseX + maxX + 2, baseY + lineY + fh2 + 2);
 +			_chtSubId = id;
 +			_chtSubZone = id / 100;
 +			updateBackendSurface(nullptr);
 +		}
 +	}
 +	return true;
++}
++
++// 繁中融合 (非上游): 調色盤亮度守門 —— 只救「暗到讀不到」的字,其餘保留原本的說話者配色。
++// 玩家回報(issue #4):某些說話者色算出的索引落在暗色,壓在深色美術上讀不到;但無差別塗白
++// 會讓各角色字幕全變白、失去辨識 → 只在太暗時換成「色相最接近且夠亮」的既有調色盤索引。
++// 判準:BT.601 luma(_currentPalette 為 0–255),Y < 90 視為太暗(字幕疊在任意美術上,門檻放寬)。
++// 成本:每句字幕算一次(非逐字/逐像素),256 掃描可忽略。
++#define CHT_LUMA(p, i) ((299 * (p)[(i) * 3] + 587 * (p)[(i) * 3 + 1] + 114 * (p)[(i) * 3 + 2]) / 1000)
++
++static int chtHueOf(const byte *p, int i) {
++	int r = p[i * 3], g = p[i * 3 + 1], b = p[i * 3 + 2];
++	int mx = MAX(r, MAX(g, b)), mn = MIN(r, MIN(g, b));
++	if (mx == mn)
++		return -1;                       // 近灰:色相無意義
++	int d = mx - mn;
++	if (mx == r)  return (60 * (g - b) / d + 360) % 360;
++	if (mx == g)  return  60 * (b - r) / d + 120;
++	return               60 * (r - g) / d + 240;
++}
++
++byte AGOSEngine::chtReadableColor(byte idx) {
++	const byte *p = _currentPalette;
++	if (CHT_LUMA(p, idx) >= 90)
++		return idx;                      // 夠亮 → 原色不動(保留各說話者配色)
++
++	int srcH = chtHueOf(p, idx);
++	int best = -1, bestScore = 1 << 30, brightest = -1, brightestY = -1;
++	for (int i = 1; i < 256; i++) {      // 跳過 0(_scaleBuf 疊層的透明哨兵)
++		int y = CHT_LUMA(p, i);
++		if (y > brightestY) { brightestY = y; brightest = i; }
++		if (y < 90)
++			continue;
++		int h = chtHueOf(p, i);
++		int score;
++		if (srcH < 0 || h < 0) {
++			score = 400 - y;             // 來源近灰 → 挑最亮的中性色
++		} else {
++			int dh = ABS(h - srcH);
++			if (dh > 180) dh = 360 - dh;
++			score = dh;                  // 色相最接近優先(保留角色識別)
++		}
++		if (score < bestScore) { bestScore = score; best = i; }
++	}
++	if (best > 0)
++		return (byte)best;
++	return (byte)(brightest > 0 ? brightest : 15);   // 整個調色盤都暗(夜晚/地牢)才退回最亮
++}
++
++// 描邊色:調色盤中最暗的「非 0」索引。0 在 _scaleBuf 合成規則(*dst = v1 ? v1 : v0)是
++// 「未寫入/透明」哨兵,拿來描邊會被當成沒畫 → 必須另挑一個視覺夠黑的既有索引。
++byte AGOSEngine::chtOutlineColor() {
++	const byte *p = _currentPalette;
++	int best = 1, bestY = 1 << 30;
++	for (int i = 1; i < 256; i++) {
++		int y = CHT_LUMA(p, i);
++		if (y < bestY) { bestY = y; best = i; }
++	}
++	return (byte)best;
 +}
 +
 +// 繁中融合 (非上游): 清掉 _scaleBuf 上的字幕 crisp 疊層(hires)
@@ -793,18 +875,18 @@ index f2212260..d0862891 100644
  	Subroutine *sub;
  	int result;
 diff --git a/engines/agos/window.cpp b/engines/agos/window.cpp
-index 03835590..3f58d5cc 100644
+index 03835590..84ac53fe 100644
 --- a/engines/agos/window.cpp
 +++ b/engines/agos/window.cpp
 @@ -109,6 +109,19 @@ void AGOSEngine::closeWindow(uint a) {
  
  void AGOSEngine::clearWindow(WindowBlock *window) {
  	clearHiResTextLayer();
-+	// hires: 清掉此視窗在 _scaleBuf 高解析疊層的中文(compact map: 左緣 window->x*16),
-+	// 否則舊的懸停句/物件名會殘留。over-clear + clamp 保險。
++	// hires: 清掉此視窗在 _scaleBuf 高解析疊層的中文(乾淨 2x:視窗邏輯矩形 ×2),
++	// 否則舊的懸停句/物件名/對話選項會殘留。留一點邊界餘裕 + clamp 保險。
 +	if (_chtHires && _scaleBuf && window) {
 +		int hx = window->x * 16, hw = window->width * 16;
-+		int hy = window->y * 2 - 32, hh = window->height * 16 + 48;
++		int hy = window->y * 2 - 4, hh = window->height * 16 + 8;
 +		if (hx < 0) hx = 0; if (hy < 0) hy = 0;
 +		if (hx + hw > _scaleBuf->w) hw = _scaleBuf->w - hx;
 +		if (hy + hh > _scaleBuf->h) hh = _scaleBuf->h - hy;
