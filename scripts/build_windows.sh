@@ -26,12 +26,16 @@ docker run --rm -v "$PROJ:/w" -w /w debian:bookworm-slim bash -c '
 
   echo "=== configure (mingw, AGOS only) ==="
   ./configure --host=$HOST \
-    --enable-engine=agos --disable-all-engines --enable-release \
+    --disable-all-engines --enable-engine=agos --enable-release \
     --with-sdl-prefix="$SDLP" \
     --disable-mad --disable-vorbis --disable-flac --disable-fluidsynth \
     --disable-mpeg2 --disable-theoradec --disable-faad --disable-libcurl --disable-timidity \
     2>&1 | tail -20
   echo "=== config.mk CXX/HOST ==="; grep -E "^CXX|^CC |HOST|BACKEND" config.mk | head
+  # [HARD] 斷言 agos 引擎真的被編進去。--enable-engine=agos 必須排在 --disable-all-engines 之後,
+  # 否則會「開了又被關掉」→ 編出零引擎的 binary(仍能偵測到遊戲,但跑不起來)。issue #1 根因。
+  grep -q "^ENABLE_AGOS" config.mk || { echo "!! FATAL: agos 引擎未啟用(檢查 configure 旗標順序:--disable-all-engines 要在 --enable-engine=agos 之前)"; exit 1; }
+  echo "  ✓ ENABLE_AGOS 確認: $(grep '^ENABLE_AGOS' config.mk)"
 
   echo "=== make ==="
   make -j$(nproc) 2>&1 | tail -8

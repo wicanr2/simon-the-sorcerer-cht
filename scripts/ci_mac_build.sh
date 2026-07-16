@@ -59,11 +59,14 @@ build_scummvm(){ local arch=$1 sdlpref=$2 out=$3
   CXXFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
   LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
   PATH="$sdlpref/bin:$PATH" $runner ./configure \
-      --enable-engine=agos --disable-all-engines --enable-release \
+      --disable-all-engines --enable-engine=agos --enable-release \
       --with-sdl-prefix="$sdlpref" \
       --disable-mad --disable-vorbis --disable-flac --disable-fluidsynth \
       --disable-mpeg2 --disable-theoradec --disable-faad --disable-libcurl \
       --disable-png --disable-freetype2 --disable-jpeg --disable-timidity >/dev/null
+  # [HARD] 斷言 agos 引擎真的被編進去(--enable-engine=agos 必須在 --disable-all-engines 之後,
+  # 否則開了又被關掉 → 零引擎 binary:能偵測到遊戲但跑不起來)。issue #1 根因。
+  grep -q "^ENABLE_AGOS" config.mk || { echo "!! FATAL: agos 引擎未啟用($arch),檢查 configure 旗標順序"; exit 1; }
   $runner make -j"$(sysctl -n hw.ncpu)" >/dev/null
   cp scummvm "$out"
   cd "$ROOT"
