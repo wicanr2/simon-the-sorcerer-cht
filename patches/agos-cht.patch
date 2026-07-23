@@ -244,10 +244,10 @@ index 193986e3..41606b41 100644
  	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
  	0x20, 0x70, 0x70, 0x20, 0x20, 0x00, 0x20, 0x00,
 diff --git a/engines/agos/charset.cpp b/engines/agos/charset.cpp
-index 05451427..07a2b166 100644
+index 05451427..372383bf 100644
 --- a/engines/agos/charset.cpp
 +++ b/engines/agos/charset.cpp
-@@ -221,6 +221,28 @@ void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
+@@ -221,6 +221,31 @@ void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
  	byte width = 6;
  	byte textColumnWidth = 8;
  
@@ -256,14 +256,17 @@ index 05451427..07a2b166 100644
 +		if (_chtLead != 0) {
 +			byte lead = _chtLead;
 +			_chtLead = 0;
-+			if (window->textLength == window->textMaxLength || window->textRow == window->height)
++			// [issue #4 對齊] 換行點以 textColumn(ASCII/CJK 共用的 8px 格計數)對視窗欄寬判斷。
++			// hires 一個 16px 中文字 = 8 邏輯px = 剛好 1 格,一行放得下 window->width 個字。
++			// 舊法用 textLength(+2)對 textMaxLength(=width*8/6)→ 約 0.67 倍寬就提早換行,
++			// 中等長度的對話選項被迫 wrap,編號就跟文字錯開一行(玩家回報)。
++			int advance = (_chtHires && _scaleBuf) ? 1 : 3;
++			if (window->textColumn + advance > window->width || window->textRow == window->height)
 +				windowNewLine(window);
 +			uint px = window->x * 8 + window->textColumn * 8;
 +			uint py = window->textRow * 8 + window->y;
 +			chtDrawBig5OnSurface(window, px, py, lead, c);
-+			// hires 用 16px 字型 → 一個 CJK 字 = 8 邏輯px = 引擎一欄(_scaleBuf 上 16px);
-+			// 非 hires 仍是 24px = 3 欄。textLength 保守 +2,提早換行不會水平溢出視窗。
-+			window->textColumn += (_chtHires && _scaleBuf) ? 1 : 3;
++			window->textColumn += advance;
 +			window->textLength += 2;
 +			return;
 +		}
